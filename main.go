@@ -8,7 +8,19 @@ import (
 	"math/rand"
 	"sort"
 	"time"
+
+	"github.com/fatih/color"
 )
+
+var colors = []*color.Color{
+	color.New(color.BgCyan, color.FgBlack),
+	color.New(color.BgHiYellow, color.FgBlack),
+	color.New(color.BgMagenta, color.FgBlack),
+	color.New(color.BgGreen, color.FgBlack),
+	color.New(color.BgHiYellow, color.FgBlack),
+	color.New(color.BgHiRed),
+	color.New(color.BgHiMagenta, color.FgBlack),
+}
 
 type Block struct {
 	Parents    [][32]byte
@@ -16,6 +28,11 @@ type Block struct {
 	Height     uint64
 	Nonce      int
 	NullBlocks uint64
+	PWeight    int
+}
+
+func (b *Block) IncrWeight(c *Consensus) int {
+	return 10 + ((c.Power[b.Owner] * 100) / c.TotalPower)
 }
 
 func (b *Block) Hash() [32]byte {
@@ -24,8 +41,9 @@ func (b *Block) Hash() [32]byte {
 }
 
 type Consensus struct {
-	Power      map[uint64]uint64
-	TotalPower uint64
+	Power      map[int]int
+	TotalPower int
+	Miners     []*Miner
 }
 
 type Message struct {
@@ -35,11 +53,9 @@ type Message struct {
 }
 
 type Miner struct {
-	id         int
-	mypower    int
-	totalpower int
-	inblocks   chan *Block
-	broadcast  func(b *Block)
+	id       int
+	inblocks chan *Block
+	netDelay func(int)
 
 	chain *chainTracker
 }
@@ -55,7 +71,16 @@ func hashPrefs(h [][32]byte) [][]byte {
 }
 
 func (m *Miner) getMiningDelay() time.Duration {
-	return time.Second * 5
+	return time.Second * 2
+}
+
+func (m *Miner) broadcast(b *Block) {
+	for _, om := range consensus.Miners {
+		go func(om *Miner) {
+			m.netDelay(om.id)
+			om.inblocks <- b
+		}(om)
+	}
 }
 
 func (m *Miner) mine(genesis *Block) {
@@ -66,8 +91,10 @@ func (m *Miner) mine(genesis *Block) {
 	for {
 		select {
 		case <-blockIn.C:
-			if rand.Intn(m.totalpower) < m.mypower {
-				parents, pheight := m.chain.getParentsForHeight(curHeight)
+			// NOTE: in the real implementation, this randomness will be secure
+			// randomness from the chain
+			if rand.Intn(consensus.TotalPower) < consensus.Power[m.id] {
+				parents, pheight, weight := m.chain.getParentsForHeight(curHeight)
 				// winner winner chicken dinner
 				myblock := &Block{
 					Height:     curHeight,
@@ -75,9 +102,12 @@ func (m *Miner) mine(genesis *Block) {
 					Owner:      m.id,
 					Parents:    parents,
 					NullBlocks: curHeight - (1 + pheight),
+					PWeight:    weight,
 				}
 				h := myblock.Hash()
-				fmt.Printf("[h:%d m:%d] mined block %x with parents: %x\n", curHeight, m.id, h[:4], hashPrefs(parents))
+				colors[int(curHeight)%len(colors)].Printf("[h:%d m:%d w:%d] mined block %x with parents: %x", curHeight, m.id, weight, h[:4], hashPrefs(parents))
+				color.Unset()
+				fmt.Println()
 				m.broadcast(myblock)
 			}
 			blockIn.Reset(m.getMiningDelay())
@@ -116,17 +146,26 @@ func (cps *candidateParentSet) addNewBlock(b *Block) {
 	cps.s[k] = append(cps.s[k], b)
 }
 
-func (cps *candidateParentSet) getBestCandidates() [][32]byte {
+func (cps *candidateParentSet) getBestCandidates() ([][32]byte, int) {
 	if len(cps.s) == 0 {
 		panic("nope")
 	}
 	if len(cps.s) == 1 {
 		sel := cps.opts[0]
 		var out [][32]byte
-		for _, b := range cps.s[sel] {
+		var addWeight int
+
+		var pw int
+		for i, b := range cps.s[sel] {
+			if i == 0 {
+				pw = b.PWeight
+			} else if b.PWeight != pw {
+				panic("blocks in same sibling set had different pweights")
+			}
 			out = append(out, b.Hash())
+			addWeight += b.IncrWeight(consensus)
 		}
-		return out
+		return out, addWeight + cps.s[sel][0].PWeight
 	}
 	fmt.Println("Chain fork detected!")
 	panic("don't handle this yet")
@@ -169,11 +208,12 @@ func (ct *chainTracker) addBlock(b *Block) {
 	cps.addNewBlock(b)
 }
 
-func (ct *chainTracker) getParentsForHeight(h uint64) ([][32]byte, uint64) {
+func (ct *chainTracker) getParentsForHeight(h uint64) ([][32]byte, uint64, int) {
 	for v := h - 1; ; v-- {
 		cps := ct.blks[v]
 		if cps != nil {
-			return cps.getBestCandidates(), v
+			p, weight := cps.getBestCandidates()
+			return p, v, weight
 		}
 
 		if v == 0 {
@@ -182,38 +222,33 @@ func (ct *chainTracker) getParentsForHeight(h uint64) ([][32]byte, uint64) {
 	}
 }
 
+var consensus *Consensus
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	genesis := &Block{
-		Nonce: 42,
+		Nonce:   42,
+		PWeight: 1,
 	}
 
 	numMiners := 10
 
-	var totalPow int
-	var miners []*Miner
+	consensus = &Consensus{Power: make(map[int]int)}
 	for i := 0; i < numMiners; i++ {
 		pow := 10 + rand.Intn(10)
-		totalPow += pow
-		m := &Miner{
+		consensus.TotalPower += pow
+		consensus.Power[i] = pow
+		consensus.Miners = append(consensus.Miners, &Miner{
 			id:       i,
-			mypower:  pow,
 			inblocks: make(chan *Block, 32),
 			chain:    newChainTracker(),
-		}
-		miners = append(miners, m)
+			netDelay: func(int) {
+				time.Sleep(time.Duration(rand.Intn(1000)+1) * time.Millisecond)
+			},
+		})
 	}
 
-	for _, m := range miners {
-		m.broadcast = func(b *Block) {
-			for _, m := range miners {
-				m.inblocks <- b
-			}
-		}
-		m.totalpower = totalPow
-	}
-
-	for _, m := range miners {
+	for _, m := range consensus.Miners {
 		go m.mine(genesis)
 	}
 
