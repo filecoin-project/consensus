@@ -105,9 +105,9 @@ func (m *Miner) mine(genesis *Block) {
 					PWeight:    weight,
 				}
 				h := myblock.Hash()
-				colors[int(curHeight)%len(colors)].Printf("[h:%d m:%d w:%d] mined block %x with parents: %x", curHeight, m.id, weight, h[:4], hashPrefs(parents))
-				color.Unset()
-				fmt.Println()
+
+				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d]", curHeight, m.id, weight)
+				fmt.Printf("%s mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
 				m.broadcast(myblock)
 			}
 			blockIn.Reset(m.getMiningDelay())
