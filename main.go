@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -18,8 +19,35 @@ var colors = []*color.Color{
 	color.New(color.BgMagenta, color.FgBlack),
 	color.New(color.BgGreen, color.FgBlack),
 	color.New(color.BgHiYellow, color.FgBlack),
-	color.New(color.BgHiRed),
+	color.New(color.BgHiRed, color.FgBlack),
 	color.New(color.BgHiMagenta, color.FgBlack),
+}
+
+type Blockstore struct {
+	blocks map[[32]byte]*Block
+	lk     sync.Mutex
+}
+
+func newBlockstore() *Blockstore {
+	return &Blockstore{
+		blocks: make(map[[32]byte]*Block),
+	}
+}
+
+func (bs *Blockstore) Put(blk *Block) {
+	bs.lk.Lock()
+	defer bs.lk.Unlock()
+	bs.blocks[blk.Hash()] = blk
+}
+
+func (bs *Blockstore) Get(h [32]byte) *Block {
+	bs.lk.Lock()
+	defer bs.lk.Unlock()
+	b, ok := bs.blocks[h]
+	if !ok {
+		panic("couldnt find block")
+	}
+	return b
 }
 
 type Block struct {
@@ -27,8 +55,10 @@ type Block struct {
 	Owner      int
 	Height     uint64
 	Nonce      int
+	Challenge  int
 	NullBlocks uint64
 	PWeight    int
+	hash       [32]byte
 }
 
 func (b *Block) IncrWeight(c *Consensus) int {
@@ -36,14 +66,20 @@ func (b *Block) IncrWeight(c *Consensus) int {
 }
 
 func (b *Block) Hash() [32]byte {
-	d, _ := json.Marshal(b)
-	return sha256.Sum256(d)
+	if b.hash == [32]byte{} {
+		d, _ := json.Marshal(b)
+		h := sha256.Sum256(d)
+		b.hash = h
+	}
+
+	return b.hash
 }
 
 type Consensus struct {
 	Power      map[int]int
 	TotalPower int
 	Miners     []*Miner
+	Blockstore *Blockstore
 }
 
 type Message struct {
@@ -75,6 +111,7 @@ func (m *Miner) getMiningDelay() time.Duration {
 }
 
 func (m *Miner) broadcast(b *Block) {
+	consensus.Blockstore.Put(b)
 	for _, om := range consensus.Miners {
 		go func(om *Miner) {
 			m.netDelay(om.id)
@@ -93,7 +130,8 @@ func (m *Miner) mine(genesis *Block) {
 		case <-blockIn.C:
 			// NOTE: in the real implementation, this randomness will be secure
 			// randomness from the chain
-			if rand.Intn(consensus.TotalPower) < consensus.Power[m.id] {
+			challenge := rand.Intn(consensus.TotalPower)
+			if challenge < consensus.Power[m.id] {
 				parents, pheight, weight := m.chain.getParentsForHeight(curHeight)
 				// winner winner chicken dinner
 				myblock := &Block{
@@ -103,16 +141,95 @@ func (m *Miner) mine(genesis *Block) {
 					Parents:    parents,
 					NullBlocks: curHeight - (1 + pheight),
 					PWeight:    weight,
+					Challenge:  challenge,
 				}
 				h := myblock.Hash()
 
-				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d]", curHeight, m.id, weight)
+				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", curHeight, m.id, weight, myblock.IncrWeight(consensus))
 				fmt.Printf("%s mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
 				m.broadcast(myblock)
 			}
 			blockIn.Reset(m.getMiningDelay())
 			curHeight++
 		case nblk := <-m.inblocks:
+			if err := verifyBlock(nblk); err != nil {
+				break
+			}
+			if nblk.Height == curHeight-1 || nblk.Height == curHeight {
+				m.chain.addBlock(nblk)
+			} else {
+				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, curHeight)
+			}
+		}
+	}
+	panic("not reachable")
+}
+
+func verifyBlock(blk *Block) error {
+	if blk.Challenge >= consensus.Power[blk.Owner] {
+		return fmt.Errorf("block was not a winner")
+	}
+
+	var parents []*Block
+	for _, p := range blk.Parents {
+		parents = append(parents, consensus.Blockstore.Get(p))
+	}
+
+	w := parents[0].PWeight
+	for _, p := range parents {
+		w += p.IncrWeight(consensus)
+	}
+	if w != blk.PWeight {
+		fmt.Println("PWeight mismatch!!")
+		return fmt.Errorf("block had incorrect PWeight")
+	}
+	return nil
+}
+
+func (m *Miner) mine_bad(genesis *Block) {
+	m.chain.addBlock(genesis)
+	curHeight := uint64(1)
+
+	blockIn := time.NewTimer(m.getMiningDelay())
+	for {
+		select {
+		case <-blockIn.C:
+			// NOTE: in the real implementation, this randomness will be secure
+			// randomness from the chain
+			challenge := rand.Intn(consensus.TotalPower)
+
+			if challenge < consensus.Power[m.id] {
+				parents, pheight, weight := m.chain.getParentsForHeight(curHeight)
+
+				if len(parents) > 1 {
+					drop := parents[len(parents)-1]
+					dropblk := consensus.Blockstore.Get(drop)
+					weight -= dropblk.IncrWeight(consensus)
+					parents = parents[:len(parents)-1]
+				}
+
+				// winner winner chicken dinner
+				myblock := &Block{
+					Height:     curHeight,
+					Nonce:      rand.Intn(100),
+					Owner:      m.id,
+					Parents:    parents,
+					NullBlocks: curHeight - (1 + pheight),
+					PWeight:    weight,
+					Challenge:  challenge,
+				}
+				h := myblock.Hash()
+
+				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", curHeight, m.id, weight, myblock.IncrWeight(consensus))
+				fmt.Printf("%s BAD mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
+				m.broadcast(myblock)
+			}
+			blockIn.Reset(m.getMiningDelay())
+			curHeight++
+		case nblk := <-m.inblocks:
+			if err := verifyBlock(nblk); err != nil {
+				break
+			}
 			if nblk.Height == curHeight-1 || nblk.Height == curHeight {
 				m.chain.addBlock(nblk)
 			} else {
@@ -146,29 +263,51 @@ func (cps *candidateParentSet) addNewBlock(b *Block) {
 	cps.s[k] = append(cps.s[k], b)
 }
 
+func weighParentSet(blks []*Block) int {
+	var addWeight, pw int
+
+	for i, b := range blks {
+		if i == 0 {
+			pw = b.PWeight
+		} else if b.PWeight != pw {
+			panic("blocks in same sibling set had different pweights")
+		}
+		addWeight += b.IncrWeight(consensus)
+	}
+	return addWeight + blks[0].PWeight
+}
+
+func getParentSetHashes(blks []*Block) [][32]byte {
+	var out [][32]byte
+	for _, b := range blks {
+		out = append(out, b.Hash())
+	}
+	return out
+}
+
 func (cps *candidateParentSet) getBestCandidates() ([][32]byte, int) {
 	if len(cps.s) == 0 {
 		panic("nope")
 	}
 	if len(cps.s) == 1 {
-		sel := cps.opts[0]
-		var out [][32]byte
-		var addWeight int
-
-		var pw int
-		for i, b := range cps.s[sel] {
-			if i == 0 {
-				pw = b.PWeight
-			} else if b.PWeight != pw {
-				panic("blocks in same sibling set had different pweights")
-			}
-			out = append(out, b.Hash())
-			addWeight += b.IncrWeight(consensus)
-		}
-		return out, addWeight + cps.s[sel][0].PWeight
+		selblks := cps.s[cps.opts[0]]
+		return getParentSetHashes(selblks), weighParentSet(selblks)
 	}
+
+	var bestWeight int
+	var bestParents string
+
+	for k, blks := range cps.s {
+		w := weighParentSet(blks)
+		if w > bestWeight {
+			bestWeight = w
+			bestParents = k
+		}
+	}
+
 	fmt.Println("Chain fork detected!")
-	panic("don't handle this yet")
+
+	return getParentSetHashes(cps.s[bestParents]), bestWeight
 }
 
 func sortHashSet(h [][32]byte) {
@@ -233,7 +372,11 @@ func main() {
 
 	numMiners := 10
 
-	consensus = &Consensus{Power: make(map[int]int)}
+	consensus = &Consensus{
+		Power:      make(map[int]int),
+		Blockstore: newBlockstore(),
+	}
+	consensus.Blockstore.Put(genesis)
 	for i := 0; i < numMiners; i++ {
 		pow := 10 + rand.Intn(10)
 		consensus.TotalPower += pow
@@ -248,8 +391,12 @@ func main() {
 		})
 	}
 
-	for _, m := range consensus.Miners {
-		go m.mine(genesis)
+	for i, m := range consensus.Miners {
+		if i%2 == 0 {
+			go m.mine(genesis)
+		} else {
+			go m.mine_bad(genesis)
+		}
 	}
 
 	select {}
