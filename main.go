@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
+	"os/signal"
 	"sort"
 	"sync"
 	"time"
@@ -94,6 +96,7 @@ type Miner struct {
 	netDelay func(int)
 
 	chain *chainTracker
+	wait  *sync.WaitGroup
 }
 
 func hashPrefs(h [][32]byte) [][]byte {
@@ -120,7 +123,7 @@ func (m *Miner) broadcast(b *Block) {
 	}
 }
 
-func (m *Miner) mine(genesis *Block) {
+func (m *Miner) mine(done <-chan struct{}, genesis *Block) {
 	m.chain.addBlock(genesis)
 	curHeight := uint64(1)
 
@@ -160,6 +163,9 @@ func (m *Miner) mine(genesis *Block) {
 			} else {
 				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, curHeight)
 			}
+		case <-done:
+			m.wait.Done()
+			return
 		}
 	}
 	panic("not reachable")
@@ -186,7 +192,7 @@ func verifyBlock(blk *Block) error {
 	return nil
 }
 
-func (m *Miner) mine_bad(genesis *Block) {
+func (m *Miner) mine_bad(done <-chan struct{}, genesis *Block) {
 	m.chain.addBlock(genesis)
 	curHeight := uint64(1)
 
@@ -235,20 +241,27 @@ func (m *Miner) mine_bad(genesis *Block) {
 			} else {
 				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, curHeight)
 			}
+		case <-done:
+			m.wait.Done()
+			return
 		}
 	}
 }
 
 type candidateParentSet struct {
-	s      map[string][]*Block
-	height uint64
-	opts   []string
+	s        map[string][]*Block
+	height   uint64
+	opts     []string
+	lessFunc func(a, b []*Block) bool
 }
 
 func newCandidateParentSet(h uint64) *candidateParentSet {
 	return &candidateParentSet{
 		s:      make(map[string][]*Block),
 		height: h,
+		lessFunc: func(a, b []*Block) bool {
+			return weighParentSet(a) < weighParentSet(b)
+		},
 	}
 }
 
@@ -294,20 +307,17 @@ func (cps *candidateParentSet) getBestCandidates() ([][32]byte, int) {
 		return getParentSetHashes(selblks), weighParentSet(selblks)
 	}
 
-	var bestWeight int
-	var bestParents string
+	var bestParents []*Block
 
-	for k, blks := range cps.s {
-		w := weighParentSet(blks)
-		if w > bestWeight {
-			bestWeight = w
-			bestParents = k
+	for _, blks := range cps.s {
+		if cps.lessFunc(bestParents, blks) {
+			bestParents = blks
 		}
 	}
 
 	fmt.Println("Chain fork detected!")
 
-	return getParentSetHashes(cps.s[bestParents]), bestWeight
+	return getParentSetHashes(bestParents), weighParentSet(bestParents)
 }
 
 func sortHashSet(h [][32]byte) {
@@ -372,6 +382,8 @@ func main() {
 
 	numMiners := 10
 
+	var waitWg sync.WaitGroup
+
 	consensus = &Consensus{
 		Power:      make(map[int]int),
 		Blockstore: newBlockstore(),
@@ -388,16 +400,26 @@ func main() {
 			netDelay: func(int) {
 				time.Sleep(time.Duration(rand.Intn(1000)+1) * time.Millisecond)
 			},
+			wait: &waitWg,
 		})
 	}
 
+	doneCh := make(chan struct{})
+
 	for i, m := range consensus.Miners {
 		if i%2 == 0 {
-			go m.mine(genesis)
+			go m.mine(doneCh, genesis)
 		} else {
-			go m.mine_bad(genesis)
+			go m.mine_bad(doneCh, genesis)
 		}
 	}
 
-	select {}
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt)
+	select {
+	case <-c:
+		close(doneCh)
+		waitWg.Wait()
+		fmt.Println("done")
+	}
 }
