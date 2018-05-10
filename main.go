@@ -77,6 +77,11 @@ func (b *Block) Hash() [32]byte {
 	return b.hash
 }
 
+func (b *Block) ShortName() string {
+	h := b.Hash()
+	return fmt.Sprintf("%x", h[:8])
+}
+
 type Consensus struct {
 	Power      map[int]int
 	TotalPower int
@@ -91,9 +96,10 @@ type Message struct {
 }
 
 type Miner struct {
-	id       int
-	inblocks chan *Block
-	netDelay func(int)
+	id        int
+	inblocks  chan *Block
+	netDelay  func(int)
+	curHeight uint64
 
 	chain *chainTracker
 	wait  *sync.WaitGroup
@@ -125,7 +131,7 @@ func (m *Miner) broadcast(b *Block) {
 
 func (m *Miner) mine(done <-chan struct{}, genesis *Block) {
 	m.chain.addBlock(genesis)
-	curHeight := uint64(1)
+	m.curHeight = 1
 
 	blockIn := time.NewTimer(m.getMiningDelay())
 	for {
@@ -135,33 +141,33 @@ func (m *Miner) mine(done <-chan struct{}, genesis *Block) {
 			// randomness from the chain
 			challenge := rand.Intn(consensus.TotalPower)
 			if challenge < consensus.Power[m.id] {
-				parents, pheight, weight := m.chain.getParentsForHeight(curHeight)
+				parents, pheight, weight := m.chain.getParentsForHeight(m.curHeight)
 				// winner winner chicken dinner
 				myblock := &Block{
-					Height:     curHeight,
+					Height:     m.curHeight,
 					Nonce:      rand.Intn(100),
 					Owner:      m.id,
 					Parents:    parents,
-					NullBlocks: curHeight - (1 + pheight),
+					NullBlocks: m.curHeight - (1 + pheight),
 					PWeight:    weight,
 					Challenge:  challenge,
 				}
 				h := myblock.Hash()
 
-				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", curHeight, m.id, weight, myblock.IncrWeight(consensus))
+				pref := colors[int(m.curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", m.curHeight, m.id, weight, myblock.IncrWeight(consensus))
 				fmt.Printf("%s mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
 				m.broadcast(myblock)
 			}
 			blockIn.Reset(m.getMiningDelay())
-			curHeight++
+			m.curHeight++
 		case nblk := <-m.inblocks:
 			if err := verifyBlock(nblk); err != nil {
 				break
 			}
-			if nblk.Height == curHeight-1 || nblk.Height == curHeight {
+			if nblk.Height == m.curHeight-1 || nblk.Height == m.curHeight {
 				m.chain.addBlock(nblk)
 			} else {
-				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, curHeight)
+				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, m.curHeight)
 			}
 		case <-done:
 			m.wait.Done()
@@ -277,6 +283,10 @@ func (cps *candidateParentSet) addNewBlock(b *Block) {
 }
 
 func weighParentSet(blks []*Block) int {
+	if len(blks) == 0 {
+		return -1
+	}
+
 	var addWeight, pw int
 
 	for i, b := range blks {
@@ -371,6 +381,48 @@ func (ct *chainTracker) getParentsForHeight(h uint64) ([][32]byte, uint64, int) 
 	}
 }
 
+func writeGraph(height uint64, ct *chainTracker) {
+	fmt.Println("writing graph: ", height)
+	fi, err := os.Create("chain.dot")
+	if err != nil {
+		panic(err)
+	}
+
+	defer fi.Close()
+
+	fmt.Fprintln(fi, "digraph G {")
+	fmt.Fprintln(fi, "\t{\n\t\tnode [shape=plaintext];")
+	fmt.Fprint(fi, "\t\t0")
+	for cur := uint64(1); cur <= height; cur++ {
+		fmt.Fprintf(fi, " -> %d", cur)
+	}
+	fmt.Fprintln(fi, ";")
+	fmt.Fprintln(fi, "\t}")
+
+	fmt.Fprintln(fi, "\tnode [shape=box];")
+	for cur := int(height); cur >= 0; cur-- {
+		cps, ok := ct.blks[uint64(cur)]
+		if !ok {
+			continue
+		}
+
+		for _, blks := range cps.s {
+			fmt.Fprintf(fi, "\t{ rank = same; %d;", cur)
+			for _, b := range blks {
+				fmt.Fprintf(fi, " \"b%s\";", b.ShortName())
+			}
+			fmt.Fprintln(fi, " }")
+			for _, b := range blks {
+				for _, parent := range b.Parents {
+					fmt.Fprintf(fi, "\tb%s -> b%x;\n", b.ShortName(), parent[:8])
+				}
+			}
+		}
+	}
+
+	fmt.Fprintln(fi, "}\n")
+}
+
 var consensus *Consensus
 
 func main() {
@@ -407,6 +459,7 @@ func main() {
 	doneCh := make(chan struct{})
 
 	for i, m := range consensus.Miners {
+		waitWg.Add(1)
 		if i%2 == 0 {
 			go m.mine(doneCh, genesis)
 		} else {
@@ -421,5 +474,6 @@ func main() {
 		close(doneCh)
 		waitWg.Wait()
 		fmt.Println("done")
+		writeGraph(consensus.Miners[0].curHeight, consensus.Miners[0].chain)
 	}
 }
