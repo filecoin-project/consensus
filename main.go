@@ -60,6 +60,7 @@ type Block struct {
 	Challenge  int
 	NullBlocks uint64
 	PWeight    int
+	Timestamp  int64
 	hash       [32]byte
 }
 
@@ -87,6 +88,10 @@ type Consensus struct {
 	TotalPower int
 	Miners     []*Miner
 	Blockstore *Blockstore
+}
+
+func (c *Consensus) isWinningTicket(m *Miner, t int) bool {
+	return t < consensus.Power[m.id]
 }
 
 type Message struct {
@@ -119,6 +124,18 @@ func (m *Miner) getMiningDelay() time.Duration {
 	return time.Second * 2
 }
 
+// gracePeriod is the span of time in which a miner will change their mining base
+// if a new better block at the current height is found
+func (m *Miner) gracePeriod() time.Duration {
+	return time.Millisecond * 200
+}
+
+// nullBlockDelay is the period of time a miner will wait after checking their ticket,
+// without seeing a new block, before they start attempting to check for a null block
+func (m *Miner) nullBlockDelay() time.Duration {
+	return time.Millisecond * 500
+}
+
 func (m *Miner) broadcast(b *Block) {
 	consensus.Blockstore.Put(b)
 	for _, om := range consensus.Miners {
@@ -129,39 +146,52 @@ func (m *Miner) broadcast(b *Block) {
 	}
 }
 
+func (m *Miner) maybeGenerateBlock(ts *tipSet) {
+	// NOTE: in the real implementation, this randomness will be secure
+	// randomness from the chain
+	challenge := rand.Intn(consensus.TotalPower)
+	if consensus.isWinningTicket(m, challenge) {
+		// winner winner chicken dinner
+		myblock := &Block{
+			Height:     m.curHeight,
+			Nonce:      rand.Intn(100),
+			Owner:      m.id,
+			Parents:    ts.parents,
+			NullBlocks: m.curHeight - (1 + ts.height),
+			PWeight:    ts.weight,
+			Challenge:  challenge,
+			Timestamp:  time.Now().UnixNano(),
+		}
+		h := myblock.Hash()
+
+		pref := colors[int(m.curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", m.curHeight, m.id, ts.weight, myblock.IncrWeight(consensus))
+		fmt.Printf("%s mined block %x with parents: %x\n", pref, h[:4], hashPrefs(ts.parents))
+		m.broadcast(myblock)
+	}
+}
+
 func (m *Miner) mine(done <-chan struct{}, genesis *Block) {
 	m.chain.addBlock(genesis)
 	m.curHeight = 1
 
-	blockIn := time.NewTimer(m.getMiningDelay())
+	workCompleted := time.NewTimer(m.getMiningDelay())
+
+	epochStart := time.Now()
+
+	// will select genesis block, but the variables get reused
+	curtipset := m.chain.getParentsForHeight(m.curHeight)
+
+	nullBlockTimer := time.NewTimer(time.Hour)
+	nullBlockTimer.Stop()
+
 	for {
 		select {
-		case <-blockIn.C:
-			// NOTE: in the real implementation, this randomness will be secure
-			// randomness from the chain
-			challenge := rand.Intn(consensus.TotalPower)
-			if challenge < consensus.Power[m.id] {
-				parents, pheight, weight := m.chain.getParentsForHeight(m.curHeight)
-				// winner winner chicken dinner
-				myblock := &Block{
-					Height:     m.curHeight,
-					Nonce:      rand.Intn(100),
-					Owner:      m.id,
-					Parents:    parents,
-					NullBlocks: m.curHeight - (1 + pheight),
-					PWeight:    weight,
-					Challenge:  challenge,
-				}
-				h := myblock.Hash()
-
-				pref := colors[int(m.curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", m.curHeight, m.id, weight, myblock.IncrWeight(consensus))
-				fmt.Printf("%s mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
-				m.broadcast(myblock)
-			}
-			blockIn.Reset(m.getMiningDelay())
-			m.curHeight++
+		case <-workCompleted.C:
+			m.maybeGenerateBlock(curtipset)
+			nullBlockTimer.Reset(m.nullBlockDelay())
 		case nblk := <-m.inblocks:
 			if err := verifyBlock(nblk); err != nil {
+				fmt.Println("VERIFICATION FAILED:", err)
 				break
 			}
 			if nblk.Height == m.curHeight-1 || nblk.Height == m.curHeight {
@@ -169,12 +199,46 @@ func (m *Miner) mine(done <-chan struct{}, genesis *Block) {
 			} else {
 				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, m.curHeight)
 			}
+
+			bts := m.chain.getHeaviestTipset()
+			if bts.weight > curtipset.weight {
+				if bts.height == curtipset.height {
+					// we're currently mining a block for this height
+					// are we within the grace period? if so, restart mining on top of this one
+					if time.Now().Sub(epochStart) < m.gracePeriod() {
+						curtipset = bts
+						workCompleted.Reset(m.getMiningDelay())
+						nullBlockTimer.Stop()
+						// note: not resetting our epoch here
+					} else {
+						//fmt.Println("not within grace period, dropping it...")
+					}
+				} else if bts.height >= curtipset.height {
+					m.curHeight = bts.height + 1
+					curtipset = bts
+					workCompleted.Reset(m.getMiningDelay())
+					nullBlockTimer.Stop()
+
+					// start a new epoch when we receive the first block of a greater height
+					epochStart = time.Now()
+				} else {
+					fmt.Println("new height was less than our current height:", bts.height, m.curHeight, curtipset.height)
+				}
+			} else {
+				if bts.height > curtipset.height {
+					fmt.Println("Got a new block, it didnt weigh as much, but its got a longer chain height")
+				}
+
+			}
+		case <-nullBlockTimer.C:
+			m.curHeight++
+			workCompleted.Reset(m.getMiningDelay())
 		case <-done:
 			m.wait.Done()
 			return
 		}
 	}
-	panic("not reachable")
+
 }
 
 func verifyBlock(blk *Block) error {
@@ -196,62 +260,6 @@ func verifyBlock(blk *Block) error {
 		return fmt.Errorf("block had incorrect PWeight")
 	}
 	return nil
-}
-
-func (m *Miner) mine_bad(done <-chan struct{}, genesis *Block) {
-	m.chain.addBlock(genesis)
-	curHeight := uint64(1)
-
-	blockIn := time.NewTimer(m.getMiningDelay())
-	for {
-		select {
-		case <-blockIn.C:
-			// NOTE: in the real implementation, this randomness will be secure
-			// randomness from the chain
-			challenge := rand.Intn(consensus.TotalPower)
-
-			if challenge < consensus.Power[m.id] {
-				parents, pheight, weight := m.chain.getParentsForHeight(curHeight)
-
-				if len(parents) > 1 {
-					drop := parents[len(parents)-1]
-					dropblk := consensus.Blockstore.Get(drop)
-					weight -= dropblk.IncrWeight(consensus)
-					parents = parents[:len(parents)-1]
-				}
-
-				// winner winner chicken dinner
-				myblock := &Block{
-					Height:     curHeight,
-					Nonce:      rand.Intn(100),
-					Owner:      m.id,
-					Parents:    parents,
-					NullBlocks: curHeight - (1 + pheight),
-					PWeight:    weight,
-					Challenge:  challenge,
-				}
-				h := myblock.Hash()
-
-				pref := colors[int(curHeight)%len(colors)].Sprintf("[h:%d m:%d w:%d i:%d]", curHeight, m.id, weight, myblock.IncrWeight(consensus))
-				fmt.Printf("%s BAD mined block %x with parents: %x\n", pref, h[:4], hashPrefs(parents))
-				m.broadcast(myblock)
-			}
-			blockIn.Reset(m.getMiningDelay())
-			curHeight++
-		case nblk := <-m.inblocks:
-			if err := verifyBlock(nblk); err != nil {
-				break
-			}
-			if nblk.Height == curHeight-1 || nblk.Height == curHeight {
-				m.chain.addBlock(nblk)
-			} else {
-				fmt.Printf("got unexpected block of height %d when we are mining block %d\n", nblk.Height, curHeight)
-			}
-		case <-done:
-			m.wait.Done()
-			return
-		}
-	}
 }
 
 type candidateParentSet struct {
@@ -348,16 +356,27 @@ func keyForParentSet(parents [][32]byte) string {
 }
 
 type chainTracker struct {
-	blks map[uint64]*candidateParentSet
+	blks           map[uint64]*candidateParentSet
+	allBlocks      map[[32]byte]*Block
+	maxheight      uint64
+	heaviestTipset *tipSet
+}
+
+type tipSet struct {
+	parents [][32]byte
+	height  uint64
+	weight  int
 }
 
 func newChainTracker() *chainTracker {
 	return &chainTracker{
-		blks: make(map[uint64]*candidateParentSet),
+		blks:      make(map[uint64]*candidateParentSet),
+		allBlocks: make(map[[32]byte]*Block),
 	}
 }
 
 func (ct *chainTracker) addBlock(b *Block) {
+	ct.allBlocks[b.Hash()] = b
 	cps, ok := ct.blks[b.Height]
 	if !ok {
 		cps = newCandidateParentSet(b.Height)
@@ -365,20 +384,104 @@ func (ct *chainTracker) addBlock(b *Block) {
 	}
 
 	cps.addNewBlock(b)
+
+	ts := ct.getParentsForHeight(b.Height + 1)
+	if ct.heaviestTipset == nil {
+		ct.heaviestTipset = ts
+		return
+	}
+
+	if ts.weight > ct.heaviestTipset.weight {
+		ct.heaviestTipset = ts
+	}
 }
 
-func (ct *chainTracker) getParentsForHeight(h uint64) ([][32]byte, uint64, int) {
+func (ct *chainTracker) getParentsForHeight(h uint64) *tipSet {
 	for v := h - 1; ; v-- {
 		cps := ct.blks[v]
 		if cps != nil {
 			p, weight := cps.getBestCandidates()
-			return p, v, weight
+			return &tipSet{
+				parents: p,
+				height:  v,
+				weight:  weight,
+			}
 		}
 
 		if v == 0 {
 			panic("shouldnt happen")
 		}
 	}
+}
+
+func (ct *chainTracker) getHeaviestTipset() *tipSet {
+	return ct.heaviestTipset
+}
+
+func (ct *chainTracker) getBlock(h [32]byte) *Block {
+	b, ok := ct.allBlocks[h]
+	if !ok {
+		panic("no such block")
+	}
+
+	return b
+}
+
+func (c *Consensus) simStats() {
+	ct := c.Miners[0].chain
+	height := c.Miners[0].curHeight
+
+	ignoredBlocks := make(map[[32]byte]struct{})
+	for i := uint64(0); i <= height; i++ {
+		cps, ok := ct.blks[i]
+		if !ok {
+			continue
+		}
+		for _, bs := range cps.s {
+			for _, blk := range bs {
+				ignoredBlocks[blk.Hash()] = struct{}{}
+			}
+		}
+	}
+
+	cur := ct.heaviestTipset.parents
+	var avtimestamps []int64
+
+	for len(cur) > 0 {
+		var tipsettime int64
+		for _, p := range cur {
+			pb := ct.getBlock(cur[0])
+			tipsettime += pb.Timestamp
+			delete(ignoredBlocks, p)
+		}
+		tipsettime /= int64(len(cur))
+		avtimestamps = append(avtimestamps, tipsettime)
+
+		next := ct.getBlock(cur[0])
+		cur = next.Parents
+	}
+
+	var blocktimes []int64
+	for i := 1; i < len(avtimestamps); i++ {
+		blocktimes = append(blocktimes, avtimestamps[i-1]-avtimestamps[i])
+	}
+
+	fmt.Println("orphaned blocks: ", len(ignoredBlocks))
+
+	for i, m := range c.Miners {
+		bts := m.chain.getHeaviestTipset()
+		blk := &Block{
+			Parents: bts.parents,
+		}
+		fmt.Printf("[%2d] %s (height=%d)\n", i, blk.ShortName(), bts.height+1)
+	}
+
+	var blocktimesum int64
+	for _, bt := range blocktimes {
+		blocktimesum += bt
+	}
+	avblktime := time.Duration(blocktimesum/int64(len(blocktimes))) * time.Nanosecond
+	fmt.Printf("average block time: %s\n", avblktime)
 }
 
 func writeGraph(height uint64, ct *chainTracker) {
@@ -428,8 +531,9 @@ var consensus *Consensus
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	genesis := &Block{
-		Nonce:   42,
-		PWeight: 1,
+		Nonce:     42,
+		PWeight:   1,
+		Timestamp: time.Now().UnixNano(),
 	}
 
 	numMiners := 10
@@ -450,7 +554,7 @@ func main() {
 			inblocks: make(chan *Block, 32),
 			chain:    newChainTracker(),
 			netDelay: func(int) {
-				time.Sleep(time.Duration(rand.Intn(1000)+1) * time.Millisecond)
+				time.Sleep(time.Duration(rand.Intn(200)+1) * time.Millisecond)
 			},
 			wait: &waitWg,
 		})
@@ -458,13 +562,9 @@ func main() {
 
 	doneCh := make(chan struct{})
 
-	for i, m := range consensus.Miners {
+	for _, m := range consensus.Miners {
 		waitWg.Add(1)
-		if i%2 == 0 {
-			go m.mine(doneCh, genesis)
-		} else {
-			go m.mine_bad(doneCh, genesis)
-		}
+		go m.mine(doneCh, genesis)
 	}
 
 	c := make(chan os.Signal)
@@ -475,5 +575,6 @@ func main() {
 		waitWg.Wait()
 		fmt.Println("done")
 		writeGraph(consensus.Miners[0].curHeight, consensus.Miners[0].chain)
+		consensus.simStats()
 	}
 }
