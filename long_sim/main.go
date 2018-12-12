@@ -241,7 +241,7 @@ func makeGen() *Block {
 			Nonce: getUniqueID(),
 			Parents: []*Block{gen},
 			Owner: -1,
-			Height: 9,
+			Height: 0,
 			Null: false,
 			Weight: 0,
 			Seed: rand.Int63n(int64(bigOlNum * totalMiners)),
