@@ -128,7 +128,7 @@ func (ts *Tipset) getWeight() int {
 }
 
 func (ts *Tipset) getParents() *Tipset {
-        if len(blocks) == 0 {
+        if len(ts.Blocks) == 0 {
                 panic("Don't call parents on nil blocks")
         }
         return ts.Blocks[0].Parents
@@ -263,19 +263,19 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
 // makeGen makes the genesis block.  In the case the lbp is more than 1 it also
 // makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
 func makeGen() *Block {
-        var gen *Block
+        var gen *Tipset
         for i := 0; i < lbp; i++ {
-                gen = &Block{
+                gen = NewTipset([]*Block{&Block{
                         Nonce: getUniqueID(),
-                        Parents: []*Block{gen},
+                        Parents: gen,
                         Owner: -1,
                         Height: 0,
                         Null: false,
                         Weight: 0,
                         Seed: rand.Int63n(int64(bigOlNum * totalMiners)),
-                }                       
+               }})       
         }
-        return gen
+        return gen.Blocks[0]
 }
 
 func main() {
