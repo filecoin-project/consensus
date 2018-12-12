@@ -74,18 +74,25 @@ type Block struct {
 
 // Tipset
 type Tipset struct {
+    // Blocks are sorted
     Blocks []*Block
     Name string
-    Seed int64
+    MinTicket int64
 }
 
 // Tipset helper functions
 func NewTipset(blocks []*Block) *Tipset {
     sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
+    minTicket := int64(-1)
+    for _, block := range blocks {
+            if minTicket == int64(-1) || block.Seed < minTicket {
+                    minTicket = block.Seed
+            }
+    }
     return &Tipset {
         Blocks: blocks,
         Name: stringifyTipset(blocks),
-        Seed: retrieveSeed(blocks),
+        MinTicket: minTicket,
     }
 }
 
@@ -101,17 +108,6 @@ func stringifyTipset(blocks []*Block) string {
         str += strBlock
     }
     return str
-}
-
-func retrieveSeed(parents []*Block) int64 {
-        // get minTicket from tipset
-        minTicket := int64(-1)
-        for _, block := range parents {
-                if minTicket == int64(-1) || block.Seed < minTicket {
-                        minTicket = block.Seed
-                }
-        }
-        return minTicket
 }
 
 func (ts *Tipset) getHeight() int {
@@ -156,7 +152,7 @@ func NewRationalMiner(id int, power float64) *RationalMiner {
 // generateBlock makes a new block with the given parents
 func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
         // Given parents and id we have a unique source for new ticket
-        minTicket := parents.Seed
+        minTicket := parents.MinTicket
         t := m.generateTicket(minTicket)
         nextBlock := &Block{
                 Nonce: getUniqueID(),
