@@ -1,33 +1,35 @@
 package main
 
 import (
-	"runtime/pprof"
-	"strconv"
-	"flag"
+        "runtime/pprof"
+        "strconv"
+        "flag"
 //        "fmt"
         "math/rand"
-	"os"
+        "os"
         "sort"
         "time"
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var uniqueID int
+var totalMiners int
+const bigOlNum = 100000
 
 func getUniqueID() int {
-	uniqueID += 1
-	return uniqueID - 1
+        uniqueID += 1
+        return uniqueID - 1
 }
 
 // Input a set of newly mined blocks, return a map grouping these blocks
 // into tipsets that obey the tipset invariants.
-func allTipsets(blks []*Block) map[string][]*Block {
-        tipsets := make(map[string][]*Block)
+func allTipsets(blks []*Block) map[string]*Tipset {
+        tipsets := make(map[string]*Tipset)
         for i, blk1 := range blks {
                 tipset := []*Block{blk1}
                 for j, blk2 := range blks {
                         if i != j {
-                                if stringifyTipset(blk1.Parents) == stringifyTipset(blk2.Parents) &&
+                                if blk1.Parents.Name == blk2.Parents.Name &&
                                         blk1.Height == blk2.Height {
                                         tipset = append(tipset, blk2)
                                 }
@@ -35,7 +37,7 @@ func allTipsets(blks []*Block) map[string][]*Block {
                 }
                 key := stringifyTipset(tipset)
                 if _, seen := tipsets[key]; !seen {
-                        tipsets[key] = tipset
+                        tipsets[key] = NewTipset(tipset)
                 }
         }
         return tipsets
@@ -45,25 +47,24 @@ func allTipsets(blks []*Block) map[string][]*Block {
 // it returns a tipset containing the block containing that ticket and all blocks
 // containing a ticket larger than it.  This is a rational miner trying to mine
 // all possible non-slashable forks off of a tipset.
-func forkTipsets(blks []*Block) [][]*Block {
-        sort.Slice(blks, func(i, j int) bool { return blks[i].Seed < blks[j].Seed })       
-        var forks [][]*Block
-        for i := range blks {
-            currentFork := []*Block{blks[i]}
-                    for j := i + 1; j < len(blks); j++ {
-                            currentFork = append(currentFork, blks[j])
+func forkTipsets(ts *Tipset) []*Tipset {
+        var forks []*Tipset
+        // works because blocks are kept ordered in Tipsets
+        for i := range ts.Blocks {
+            currentFork := []*Block{ts.Blocks[i]}
+                    for j := i + 1; j < len(ts.Blocks); j++ {
+                            currentFork = append(currentFork, ts.Blocks[j])
                     }
-                    forks = append(forks, currentFork)
+                    forks = append(forks, NewTipset(currentFork))
         }
         return forks
 }
 
-var totalMiners int
-const bigOlNum = 100000
 
+// Block
 type Block struct {
-	Nonce int
-        Parents []*Block
+        Nonce int
+        Parents *Tipset
         Owner int
         Height int
         Null bool
@@ -71,10 +72,27 @@ type Block struct {
         Seed int64
 }
 
+// Tipset
+type Tipset struct {
+    Blocks []*Block
+    Name string
+    Seed int64
+}
+
+// Tipset helper functions
+func NewTipset(blocks []*Block) *Tipset {
+    sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
+    return &Tipset {
+        Blocks: blocks,
+        Name: stringifyTipset(blocks),
+        Seed: retrieveSeed(blocks),
+    }
+}
+
 func stringifyTipset(blocks []*Block) string {
     var blockStrings []string
     for _, block := range blocks {
-	    blockStrings = append(blockStrings, strconv.Itoa(block.Nonce) + "-")
+            blockStrings = append(blockStrings, strconv.Itoa(block.Nonce) + "-")
     }
     sort.Strings(blockStrings)
 
@@ -83,34 +101,6 @@ func stringifyTipset(blocks []*Block) string {
         str += strBlock
     }
     return str
-}
-
-type RationalMiner struct {
-        Power float64
-        PrivateForks map[string][]*Block
-        ID int
-}
-
-func NewRationalMiner(id int, power float64) *RationalMiner {
-        return &RationalMiner{
-                Power: power,
-                PrivateForks: make(map[string][]*Block, 0),
-                ID: id,
-        }
-}
-
-func parentHeight(parents []*Block) int {
-        if len(parents) == 0 {
-                panic("Don't call height on no parents")
-        }
-        return parents[0].Height
-}
-
-func parentWeight(parents []*Block) int {
-        if len(parents) == 0 {
-                panic("Don't call weight on no parents")
-        }
-        return len(parents) + parents[0].Weight - 1
 }
 
 func retrieveSeed(parents []*Block) int64 {
@@ -124,20 +114,59 @@ func retrieveSeed(parents []*Block) int64 {
         return minTicket
 }
 
+func (ts *Tipset) getHeight() int {
+        if len(ts.Blocks) == 0 {
+                panic("Don't call height on no parents")
+        }
+        // Works because all blocks in a tipset have same height (see allTipsets)
+        return ts.Blocks[0].Height
+}
+
+func (ts *Tipset) getWeight() int {
+        if len(ts.Blocks) == 0 {
+                panic("Don't call weight on no parents")
+        }
+        // Works because all blocks in a tipset have the same parent (see allTipsets)
+        return len(ts.Blocks) + ts.Blocks[0].Weight - 1
+}
+
+// Chain tracker
+type chainTracker struct {
+    // index tipsets per height
+    blocks map[uint64]Tipset
+
+}
+
+// Rational Miner
+type RationalMiner struct {
+        Power float64
+        PrivateForks map[string]*Tipset
+        ID int
+}
+
+// Rational Miner helper functions
+func NewRationalMiner(id int, power float64) *RationalMiner {
+        return &RationalMiner{
+                Power: power,
+                PrivateForks: make(map[string]*Tipset, 0),
+                ID: id,
+        }
+}
+
 // generateBlock makes a new block with the given parents
-func (m *RationalMiner) generateBlock(parents []*Block) *Block {
+func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
         // Given parents and id we have a unique source for new ticket
-        minTicket := retrieveSeed(parents)
+        minTicket := parents.Seed
         t := m.generateTicket(minTicket)
         nextBlock := &Block{
-		Nonce: getUniqueID(),
+                Nonce: getUniqueID(),
                 Parents: parents,
                 Owner: m.ID,
-                Height: parentHeight(parents) + 1,
-                Weight: parentWeight(parents),
+                Height: parents.getHeight() + 1,
+                Weight: parents.getWeight(),
                 Seed: t,
         }
-        
+
         if isWinningTicket(t, m.Power) {
                 nextBlock.Null = false
                 nextBlock.Weight += 1
@@ -165,10 +194,11 @@ func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 func (m *RationalMiner) SourceAllForks(newBlocks []*Block) {
         // split the newblocks into all potential forkable tipsets
         allTipsets := allTipsets(newBlocks)
+        // rational miner strategy look for all potential minblocks there
         for k := range allTipsets {
                 forkTipsets := forkTipsets(allTipsets[k])
                 for _, ts := range forkTipsets {
-                        m.PrivateForks[stringifyTipset(ts)] = ts
+                        m.PrivateForks[ts.Name] = ts
                 }
         }
 }
@@ -183,9 +213,9 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
         var nullBlocks []*Block
         maxWeight := 0
         var bestBlock *Block
-//	fmt.Printf("miner %d.  len priv forks: %d\n", m.ID, len(m.PrivateForks))
+//      fmt.Printf("miner %d.  len priv forks: %d\n", m.ID, len(m.PrivateForks))
         for k := range m.PrivateForks {
-                // generateBlock takes in a blocks parent's, as in current head of PrivateForks
+                // generateBlock takes in a block's parent tipset, as in current head of PrivateForks
                 blk := m.generateBlock(m.PrivateForks[k])
                 if !blk.Null && blk.Weight > maxWeight {
                         bestBlock = blk
@@ -202,32 +232,33 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
         // if bestBlock is not null
         if bestBlock != nil {
             // kill all pforks
-            m.PrivateForks = make(map[string][]*Block)
+            m.PrivateForks = make(map[string]*Tipset)
         } else {
             // extend null block chain
             for _, nblk := range nullBlocks {
-                    delete(m.PrivateForks, stringifyTipset(nblk.Parents))
+                    delete(m.PrivateForks, nblk.Parents.Name)
                     // add the new null block to our private forks
-                    m.PrivateForks[stringifyTipset([]*Block{nblk})] = []*Block{nblk}
+                    nullTipset := NewTipset([]*Block{nblk})
+                    m.PrivateForks[nullTipset.Name] = nullTipset
             }
         }
         return bestBlock
 }
 
 func main() {
-	flag.Parse()
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			panic(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
-	uniqueID = 0
+        flag.Parse()
+        if *cpuprofile != "" {
+                f, err := os.Create(*cpuprofile)
+                if err != nil {
+                        panic(err)
+                }
+                pprof.StartCPUProfile(f)
+                defer pprof.StopCPUProfile()
+        }
+        uniqueID = 0
         rand.Seed(time.Now().UnixNano())
         gen := &Block{
-		Nonce: getUniqueID(),
+                Nonce: getUniqueID(),
                 Parents: nil,
                 Owner: -1,
                 Height: 0,
@@ -242,9 +273,9 @@ func main() {
         }
         blocks := []*Block{gen}
         for round := 0; round < roundNum; round++ {
-//		fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
-//		fmt.Printf("Round %d -- %d new blocks\n", round, len(blocks))
-//		fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")		
+//              fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
+//              fmt.Printf("Round %d -- %d new blocks\n", round, len(blocks))
+//              fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")            
                 var newBlocks = []*Block{}
                 for _, m := range miners {
                         // Each miner mines
@@ -257,4 +288,4 @@ func main() {
                 // NewBlocks added to network
                 blocks = newBlocks
         }
-}	
+}
