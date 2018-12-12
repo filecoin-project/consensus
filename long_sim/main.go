@@ -4,7 +4,7 @@ import (
         "runtime/pprof"
         "strconv"
         "flag"
-//        "fmt"
+        "fmt"
         "math/rand"
         "os"
         "sort"
@@ -15,6 +15,7 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var uniqueID int
 var totalMiners int
 const bigOlNum = 100000
+var lbp int
 
 func getUniqueID() int {
         uniqueID += 1
@@ -126,6 +127,13 @@ func (ts *Tipset) getWeight() int {
         return len(ts.Blocks) + ts.Blocks[0].Weight - 1
 }
 
+func (ts *Tipset) getParents() *Tipset {
+        if len(blocks) == 0 {
+                panic("Don't call parents on nil blocks")
+        }
+        return ts.Blocks[0].Parents
+}
+
 // Chain tracker
 type chainTracker struct {
     // index tipsets per height
@@ -149,10 +157,21 @@ func NewRationalMiner(id int, power float64) *RationalMiner {
         }
 }
 
+// Input the base tipset for mining lookbackTipset will return the ancestor
+// tipset that should be used for sampling the leader election seed.
+// On LBP == 1, returns itself (as in no farther than direct parents)
+func lookbackTipset(tipset *Tipset) *Tipset {
+        for i := 0; i < lbp - 1; i++ {
+                tipset = tipset.getParents()
+        }
+        return tipset
+}
+
 // generateBlock makes a new block with the given parents
 func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
         // Given parents and id we have a unique source for new ticket
-        minTicket := parents.MinTicket
+        minTicket := lookbackTipset(parents).MinTicket
+
         t := m.generateTicket(minTicket)
         nextBlock := &Block{
                 Nonce: getUniqueID(),
@@ -209,7 +228,7 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
         var nullBlocks []*Block
         maxWeight := 0
         var bestBlock *Block
-//      fmt.Printf("miner %d.  len priv forks: %d\n", m.ID, len(m.PrivateForks))
+        fmt.Printf("miner %d.  len priv forks: %d\n", m.ID, len(m.PrivateForks))
         for k := range m.PrivateForks {
                 // generateBlock takes in a block's parent tipset, as in current head of PrivateForks
                 blk := m.generateBlock(m.PrivateForks[k])
@@ -241,6 +260,24 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
         return bestBlock
 }
 
+// makeGen makes the genesis block.  In the case the lbp is more than 1 it also
+// makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
+func makeGen() *Block {
+        var gen *Block
+        for i := 0; i < lbp; i++ {
+                gen = &Block{
+                        Nonce: getUniqueID(),
+                        Parents: []*Block{gen},
+                        Owner: -1,
+                        Height: 0,
+                        Null: false,
+                        Weight: 0,
+                        Seed: rand.Int63n(int64(bigOlNum * totalMiners)),
+                }                       
+        }
+        return gen
+}
+
 func main() {
         flag.Parse()
         if *cpuprofile != "" {
@@ -253,25 +290,19 @@ func main() {
         }
         uniqueID = 0
         rand.Seed(time.Now().UnixNano())
-        gen := &Block{
-                Nonce: getUniqueID(),
-                Parents: nil,
-                Owner: -1,
-                Height: 0,
-                Null: false,
-                Weight: 0,
-        }
-        roundNum := 1000
-        totalMiners = 30
+        roundNum := 100
+        totalMiners = 1000
+        lbp = 100
         miners := make([]*RationalMiner, totalMiners)
+        gen := makeGen()
         for m := 0; m < totalMiners; m++ {
                 miners[m] = NewRationalMiner(m, 1.0/float64(totalMiners))
         }
         blocks := []*Block{gen}
         for round := 0; round < roundNum; round++ {
-//              fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
-//              fmt.Printf("Round %d -- %d new blocks\n", round, len(blocks))
-//              fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")            
+                fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
+                fmt.Printf("Round %d -- %d new blocks\n", round, len(blocks))
+                fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")            
                 var newBlocks = []*Block{}
                 for _, m := range miners {
                         // Each miner mines
