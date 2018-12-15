@@ -359,7 +359,7 @@ func analyzeSim(ct *chainTracker) {
 func main() {
 
         fLbp := flag.Int("lbp", 1, "sim lookback")
-        fRoundNum := flag.Int("rounds", 30, "number of rounds to sim")
+        fRoundNum := flag.Int("rounds", 100, "number of rounds to sim")
         fTotalMiners := flag.Int("miners", 10, "number of miners to sim")
 
         flag.Parse()
