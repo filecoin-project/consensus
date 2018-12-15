@@ -13,9 +13,6 @@ import (
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-var roundNum int
-var lbp int
-var totalMiners int
 var suite bool
 
 var uniqueID int
@@ -161,21 +158,23 @@ type RationalMiner struct {
         Power float64
         PrivateForks map[string]*Tipset
         ID int
+        TotalMiners int
 }
 
 // Rational Miner helper functions
-func NewRationalMiner(id int, power float64) *RationalMiner {
+func NewRationalMiner(id int, power float64, totalMiners int) *RationalMiner {
         return &RationalMiner{
                 Power: power,
                 PrivateForks: make(map[string]*Tipset, 0),
                 ID: id,
+                TotalMiners: totalMiners,
         }
 }
 
 // Input the base tipset for mining lookbackTipset will return the ancestor
 // tipset that should be used for sampling the leader election seed.
 // On LBP == 1, returns itself (as in no farther than direct parents)
-func lookbackTipset(tipset *Tipset) *Tipset {
+func lookbackTipset(tipset *Tipset, lbp int) *Tipset {
         for i := 0; i < lbp - 1; i++ {
                 tipset = tipset.getParents()
         }
@@ -183,9 +182,9 @@ func lookbackTipset(tipset *Tipset) *Tipset {
 }
 
 // generateBlock makes a new block with the given parents
-func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
+func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
         // Given parents and id we have a unique source for new ticket
-        minTicket := lookbackTipset(parents).MinTicket
+        minTicket := lookbackTipset(parents, lbp).MinTicket
 
         t := m.generateTicket(minTicket)
         nextBlock := &Block{
@@ -197,7 +196,7 @@ func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
                 Seed: t,
         }
 
-        if isWinningTicket(t, m.Power) {
+        if isWinningTicket(t, m.Power, m.TotalMiners) {
                 nextBlock.Null = false
                 nextBlock.Weight += 1
         } else {
@@ -207,7 +206,7 @@ func (m *RationalMiner) generateBlock(parents *Tipset) *Block {
         return nextBlock
 }
 
-func isWinningTicket(ticket int64, power float64) bool {
+func isWinningTicket(ticket int64, power float64, totalMiners int) bool {
     // this is a simulation of ticket checking: the ticket is drawn uniformly from 0 to bigOlNum * totalMiners.
     // If it is smaller than that * the miner's power (between 0 and 1), it wins.
     return float64(ticket) < float64(bigOlNum) * float64(totalMiners) * power
@@ -217,7 +216,7 @@ func isWinningTicket(ticket int64, power float64) bool {
 func (m *RationalMiner) generateTicket(minTicket int64) int64 {
         seed := minTicket + int64(m.ID)
         r := rand.New(rand.NewSource(seed))
-        ticket := r.Int63n(int64(bigOlNum * totalMiners))
+        ticket := r.Int63n(int64(bigOlNum * m.TotalMiners))
         return ticket
 }
 
@@ -236,7 +235,7 @@ func (m *RationalMiner) SourceAllForks(newBlocks []*Block) {
 // Mine outputs the block that a miner mines in a round where the leaves of
 // the block tree are given by newBlocks.  A miner will only ever mine one
 // block in a round because if it mines two or more it gets slashed.  #Incentives #Blockchain
-func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
+func (m *RationalMiner) Mine(newBlocks []*Block, lbp int) *Block {
         // Start by combining existing pforks and new blocks available to mine atop of
         m.SourceAllForks(newBlocks)
 
@@ -246,7 +245,7 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
         fmt.Printf("miner %d. number of priv forks: %d\n", m.ID, len(m.PrivateForks))
         for k := range m.PrivateForks {
                 // generateBlock takes in a block's parent tipset, as in current head of PrivateForks
-                blk := m.generateBlock(m.PrivateForks[k])
+                blk := m.generateBlock(m.PrivateForks[k], lbp)
                 if !blk.Null && blk.Weight > maxWeight {
                         bestBlock = blk
                         maxWeight = blk.Weight
@@ -277,7 +276,7 @@ func (m *RationalMiner) Mine(newBlocks []*Block) *Block {
 
 // makeGen makes the genesis block.  In the case the lbp is more than 1 it also
 // makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
-func makeGen() *Block {
+func makeGen(lbp int, totalMiners int) *Block {
         var gen *Tipset
         for i := 0; i < lbp; i++ {
                 gen = NewTipset([]*Block{&Block{
@@ -358,9 +357,9 @@ func runSim(totalMiners int, roundNum int, lbp int) *chainTracker {
         rand.Seed(time.Now().UnixNano())
         chainTracker := NewChainTracker()
         miners := make([]*RationalMiner, totalMiners)
-        gen := makeGen()
+        gen := makeGen(lbp, totalMiners)
         for m := 0; m < totalMiners; m++ {
-                miners[m] = NewRationalMiner(m, 1.0/float64(totalMiners))
+                miners[m] = NewRationalMiner(m, 1.0/float64(totalMiners), totalMiners)
         }
         blocks := []*Block{gen}
         var currentHeight int
@@ -392,7 +391,7 @@ func runSim(totalMiners int, roundNum int, lbp int) *chainTracker {
                 var newBlocks = []*Block{}
                 for _, m := range miners {
                         // Each miner mines
-                        blk := m.Mine(blocks)
+                        blk := m.Mine(blocks, lbp)
                         if blk != nil {
                                 newBlocks = append(newBlocks, blk)
                         }
@@ -415,10 +414,10 @@ func main() {
         fSuite := flag.Bool("suite", false, "runs test suite (vs single sim)")
 
         flag.Parse()
-        lbp = *fLbp
-        roundNum = *fRoundNum
-        totalMiners = *fTotalMiners
-        suite = *fSuite
+        lbp := *fLbp
+        roundNum := *fRoundNum
+        totalMiners := *fTotalMiners
+        suite := *fSuite
         if *cpuprofile != "" {
                 f, err := os.Create(*cpuprofile)
                 if err != nil {
