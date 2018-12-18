@@ -18,6 +18,12 @@ var suite bool
 var uniqueID int
 const bigOlNum = 100000
 
+func printSingle(content string) {
+        if !suite {
+                fmt.Printf(content)
+        }
+}
+
 func getUniqueID() int {
         uniqueID += 1
         return uniqueID - 1
@@ -242,7 +248,7 @@ func (m *RationalMiner) Mine(newBlocks []*Block, lbp int) *Block {
         var nullBlocks []*Block
         maxWeight := 0
         var bestBlock *Block
-        fmt.Printf("miner %d. number of priv forks: %d\n", m.ID, len(m.PrivateForks))
+        printSingle(fmt.Sprintf("miner %d. number of priv forks: %d\n", m.ID, len(m.PrivateForks)))
         for k := range m.PrivateForks {
                 // generateBlock takes in a block's parent tipset, as in current head of PrivateForks
                 blk := m.generateBlock(m.PrivateForks[k], lbp)
@@ -382,13 +388,13 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
                 }
                 chainTracker.blocksByHeight[currentHeight] = blocks
 
-                fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
-                fmt.Printf("Round %d -- %d new blocks\n", round, len(blocks))
+                printSingle(fmt.Sprintf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"))
+                printSingle(fmt.Sprintf("Round %d -- %d new blocks\n", round, len(blocks)))
                 for _, blk := range blocks {
-                        fmt.Printf("b%d (m%d)\t", blk.Nonce, blk.Owner)
+                        printSingle(fmt.Sprintf("b%d (m%d)\t", blk.Nonce, blk.Owner))
                 }
-                fmt.Printf("\n")
-                fmt.Printf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
+                printSingle(fmt.Sprintf("\n"))
+                printSingle(fmt.Sprintf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"))
                 var newBlocks = []*Block{}
                 for _, m := range miners {
                         // Each miner mines
@@ -405,7 +411,6 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
         }
         chainTracker.maxHeight = roundNum - 1
         c <- chainTracker
-        // close(c)
 }
 
 func main() {
@@ -419,7 +424,7 @@ func main() {
         lbp := *fLbp
         roundNum := *fRoundNum
         totalMiners := *fTotalMiners
-        suite := *fSuite
+        suite = *fSuite
         if *cpuprofile != "" {
                 f, err := os.Create(*cpuprofile)
                 if err != nil {
@@ -431,20 +436,15 @@ func main() {
 
         var numSims int
         if !suite {
-            numSims = 20
+            numSims = 1
         } else {
-            numSims = 200
+            numSims = 100
         }
-        // if !suite {
-        //        ct := runSim(totalMiners, roundNum, lbp)
-        //        fmt.Printf("Sim produced %d blocks\n", len(ct.blocks))
-        //        drawChain(ct.maxHeight, ct)
-        // } else {
-               // numSims := 100
-                var cts []*chainTracker
-                c := make(chan *chainTracker, numSims)
+        var cts []*chainTracker
+        c := make(chan *chainTracker, numSims)
                 for n := 0; n < numSims; n++ {
-                        fmt.Printf("\n-*-*-*-*-*-*-*-*-*-*-\nTrial %d\n", n)
+                        fmt.Printf("Trial %d\n", n)
+                        fmt.Printf("-*-*-*-*-*-*-*-*-*-*-\n")
                         go runSim(totalMiners, roundNum, lbp, c)
                 }
                 for i := range c {
@@ -454,6 +454,10 @@ func main() {
                                 close(c)
                         }
                 }
+        if (suite) {
                 fmt.Printf("%d trials run", len(cts))
-        // }
+        } else {
+                fmt.Printf("Sim produced %d blocks\n", len(cts[0].blocks))
+                drawChain(cts[0].maxHeight, cts[0])
+        }
 }
