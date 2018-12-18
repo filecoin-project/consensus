@@ -374,7 +374,7 @@ func averageLiveForksPerRound(ct *chainTracker) float64 {
 	return float64(sum) / float64(ct.maxHeight)
 }
 
-func analyzeSim(cts []*chainTracker) {
+func analyzeSim(cts []*chainTracker, lbp int) {
 	// run analysis on the chains here
 
 	// 1. average num of live forks
@@ -384,7 +384,7 @@ func analyzeSim(cts []*chainTracker) {
 		// for each chain
 		sum += averageLiveForksPerRound(cts[n])
 	}
-	fmt.Printf("%.2f average forks per round across %d chains", sum/float64(len(cts)), len(cts))
+	fmt.Printf("%.2f average forks per round across %d chains with lbp %d", sum/float64(len(cts)), len(cts), lbp)
 }
 
 func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
@@ -485,8 +485,7 @@ func main() {
 	}
 	if suite {
 		fmt.Printf("%d trials run\n", len(cts))
-		// drawChain(cts[len(cts)-1])
-		analyzeSim(cts)
+		analyzeSim(cts, lbp)
 	} else {
 		fmt.Printf("Sim produced %d blocks\n", len(cts[0].blocks))
 		drawChain(cts[0])
