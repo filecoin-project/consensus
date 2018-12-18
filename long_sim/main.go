@@ -1,4 +1,4 @@
-// example run: ./long_sim -lbp=100 -rounds=10 -miners=10 -suite
+// example run: ./long_sim -lbp=100 -rounds=10 -miners=10 -trials=100
 package main
 
 import (
@@ -313,7 +313,8 @@ func drawChain(ct *chainTracker) {
 
 	// Write out height index alongside the block graph
 	fmt.Fprintf(fil, "\t\t0")
-	for cur := int(0); cur < ct.maxHeight; cur++ {
+	// Start at 1 because we already wrote out the 0 for the .dot file
+	for cur := int(1); cur <= ct.maxHeight; cur++ {
 		fmt.Fprintf(fil, " -> %d", cur)
 	}
 	fmt.Fprintln(fil, ";")
@@ -321,7 +322,7 @@ func drawChain(ct *chainTracker) {
 
 	// Write out the actual blocks
 	fmt.Fprintln(fil, "\tnode [shape=box];")
-	for cur := ct.maxHeight; cur > 0; cur-- {
+	for cur := ct.maxHeight; cur >= 0; cur-- {
 		// get blocks per height
 		blocks, ok := ct.blocksByHeight[cur]
 		// if no blocks at height, skip
@@ -361,7 +362,7 @@ func drawChain(ct *chainTracker) {
 
 func averageLiveForksPerRound(ct *chainTracker) float64 {
 	var sum int
-	for cur := ct.maxHeight; cur > 0; cur-- {
+	for cur := ct.maxHeight; cur >= 0; cur-- {
 		// get blocks per height
 		blocks, ok := ct.blocksByHeight[cur]
 		// if no blocks at height, skip
@@ -371,7 +372,7 @@ func averageLiveForksPerRound(ct *chainTracker) float64 {
 		sum += len(blocks)
 
 	}
-	return float64(sum) / float64(ct.maxHeight)
+	return float64(sum) / float64(ct.maxHeight+1)
 }
 
 func analyzeSim(cts []*chainTracker, lbp int) {
@@ -438,7 +439,8 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 			blocks = newBlocks
 		}
 	}
-	chainTracker.maxHeight = roundNum
+	// height is 0 indexed
+	chainTracker.maxHeight = roundNum - 1
 	c <- chainTracker
 }
 
@@ -447,13 +449,18 @@ func main() {
 	fLbp := flag.Int("lbp", 1, "sim lookback")
 	fRoundNum := flag.Int("rounds", 100, "number of rounds to sim")
 	fTotalMiners := flag.Int("miners", 10, "number of miners to sim")
-	fSuite := flag.Bool("suite", false, "runs test suite (vs single sim)")
+	fNumTrials := flag.Int("trials", 1, "number of trials to run")
 
 	flag.Parse()
 	lbp := *fLbp
 	roundNum := *fRoundNum
 	totalMiners := *fTotalMiners
-	suite = *fSuite
+	trials := *fNumTrials
+
+	if trials <= 0 {
+		panic("None of your assumptions have been proven wrong")
+	}
+
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
@@ -463,31 +470,27 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	var numSims int
-	if !suite {
-		numSims = 1
-	} else {
-		numSims = 100
-	}
+	suite = trials > 1
 	var cts []*chainTracker
-	c := make(chan *chainTracker, numSims)
-	for n := 0; n < numSims; n++ {
+	c := make(chan *chainTracker, trials)
+	for n := 0; n < trials; n++ {
 		fmt.Printf("Trial %d\n", n)
 		fmt.Printf("-*-*-*-*-*-*-*-*-*-*-\n")
 		go runSim(totalMiners, roundNum, lbp, c)
 	}
 	for i := range c {
 		cts = append(cts, i)
-		if len(cts) == numSims {
+		if len(cts) == trials {
 			// TODO: fix this
 			close(c)
 		}
 	}
-	if suite {
-		fmt.Printf("%d trials run\n", len(cts))
-		analyzeSim(cts, lbp)
-	} else {
+
+	if trials == 1 {
 		fmt.Printf("Sim produced %d blocks\n", len(cts[0].blocks))
 		drawChain(cts[0])
+	} else {
+		fmt.Printf("%d trials run\n", len(cts))
+		analyzeSim(cts, lbp)
 	}
 }
