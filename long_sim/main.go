@@ -352,7 +352,7 @@ func drawChain(height int, ct *chainTracker) {
         fmt.Fprintln(fil, "}\n")
 }
 
-func runSim(totalMiners int, roundNum int, lbp int) *chainTracker {
+func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
         uniqueID = 0
         rand.Seed(time.Now().UnixNano())
         chainTracker := NewChainTracker()
@@ -376,7 +376,8 @@ func runSim(totalMiners int, roundNum int, lbp int) *chainTracker {
                 }
                 for _, blk := range blocks {
                         if currentHeight != blk.Height {
-                            panic("Check your assumptions: all block heights from a round are not equal")
+                                // TODO: have seen this, can't reproduce. Fix.
+                                panic("Check your assumptions: all block heights from a round are not equal")
                         }
                 }
                 chainTracker.blocksByHeight[currentHeight] = blocks
@@ -403,7 +404,8 @@ func runSim(totalMiners int, roundNum int, lbp int) *chainTracker {
                 }
         }
         chainTracker.maxHeight = roundNum - 1
-        return chainTracker
+        c <- chainTracker
+        // close(c)
 }
 
 func main() {
@@ -427,9 +429,31 @@ func main() {
                 defer pprof.StopCPUProfile()
         }
 
+        var numSims int
         if !suite {
-                ct := runSim(totalMiners, roundNum, lbp)
-                fmt.Printf("Sim produced %d blocks\n", len(ct.blocks))
-                drawChain(ct.maxHeight, ct)
+            numSims = 20
+        } else {
+            numSims = 200
         }
+        // if !suite {
+        //        ct := runSim(totalMiners, roundNum, lbp)
+        //        fmt.Printf("Sim produced %d blocks\n", len(ct.blocks))
+        //        drawChain(ct.maxHeight, ct)
+        // } else {
+               // numSims := 100
+                var cts []*chainTracker
+                c := make(chan *chainTracker, numSims)
+                for n := 0; n < numSims; n++ {
+                        fmt.Printf("\n-*-*-*-*-*-*-*-*-*-*-\nTrial %d\n", n)
+                        go runSim(totalMiners, roundNum, lbp, c)
+                }
+                for i := range c {
+                        cts = append(cts, i)
+                        if len(cts) == numSims {
+                                // TODO: fix this
+                                close(c)
+                        }
+                }
+                fmt.Printf("%d trials run", len(cts))
+        // }
 }
