@@ -13,7 +13,8 @@ Broadly, our goals are to:
 - Define and prove Filecoin consensus security properties.
 
 Note 1: Content here may be out-of-sync.
-Note 2: Throughout this repo, "miners" will most often refer to Filecoin Storage miners (unless otherwise specified). While we refer to both storage and retrieval miners as miners, strictu sensu, only participation in EC (from storage miners) is mining.
+Note 2: We may sometimes link to inaccessible content here, alas some of these research endeavours require some gestation or privacy on part of our endeavors.
+Note 3: Throughout this repo, "miners" will most often refer to Filecoin Storage miners (unless otherwise specified). While we refer to both storage and retrieval miners as miners, strictu sensu, only participation in EC (from storage miners) is mining.
 
 ## Table of Contents
 
@@ -35,7 +36,7 @@ All of this happens through the composition of three distinct protocols:
 1. Storage Power Consensus (SPC) -- which generates a power table from the protocol, provably reflecting how much storage participants have effectively committed to the network.
 1. Expected Consensus (EC) -- which is invoked during leader election to select a miner from a weighted set of participants.
 
-These protocols are meant to be modular and have [interfaces](link) which enable us to swap them out or improve them without affecting the rest of the Filecoin stack, for instance updating proofs without changing how SPC functions, or leader election without changing the Filecoin protocol.
+These protocols are meant to be modular and have [interfaces](./research-notes/interfaces.md) which enable us to swap them out or improve them without affecting the rest of the Filecoin stack, for instance updating proofs without changing how SPC functions, or leader election without changing the Filecoin protocol.
 
 ## Consensus Research
 
@@ -50,31 +51,19 @@ To gain familiarity with this subject matter, we refer the reader to:
 
 #### Current avenues of research
 
-Most of our work to date focuses on 
+Most of our work to date focuses on these major endeavours.
 
-| **Topic** | **Description** | **Status** | **Links** |
+By design, these are meant to be extremely large, open-ended endeavours each of which breaks out into multiple open or completed problems. The endeavours themselves are evergreen sources of enquiry for and beyond Filecoin.
+
+| **Topic** | **Description** | **Status** | **Notes** |
 | --- | --- | --- | --- | --- |
-| Security Model | 
-| Assumptions | 
-| Formal Treatment of EC soundness | 
-| EC incentive compatibility | 
-| Attacks | 
-| Design Decisions | specifically, LBP, Slashing, Weighting, VDF use
-| Convergence | 
-| Finality | 
-| Null Blocks |
-| SSLE |
-| Formalizing PFT | 
-| Slashing Spec | 
-
-
-- Randomness sampling strategy
-- Weighting Function impact on Consensus
-- Attack resistance and parameter choices
-- EC/SPC interface (for both SLE and SSLE)
-- Block Delay
-- Finality
-
+| Formal Treatment of Expected Consensus | Formal analysis of Expected Consensus' security guarantees | Preliminary (10%) | -[issue](https://github.com/filecoin-project/consensus/issues/19) |
+| EC incentive compatibility | Simulation and probabilistic work to derive certainty around EC incentives | In Progress (20%) | - Chain convergence <br>- [Finality](https://github.com/filecoin-project/consensus/issues/29) |
+| Simulate EC Attacks | Bottoms-up analysis of EC security simulating likely attacks under various proportions of honest/rational/adversarial miners to iterate on protocol design | In Progress (25%) | -[issue](https://github.com/filecoin-project/consensus/issues/26) |
+| Secret Single Leader Election | Working out a full construction for SSLE. In spirit similar to cryptographic sortition but guaranteeing a single leader at every round | In Progress (25%) | - [issue](https://github.com/filecoin-project/research-private/issues/8) <br>- SSLE RFP |
+| Formalizing Power Fault Tolerance (PFT) | BFT is abstracted in terms of influence over the protocol rather than machines | In Progress (25%) | - [issue](https://github.com/filecoin-project/consensus/issues/38) |
+| Blockchain design | This broadly refers to design issues around EC and initial parameter setting for the Filecoin blockchain ensuring EC incentive compatibility using simulations or probabilistic proofs | In Progress (60%) | - [Weighting](https://github.com/filecoin-project/consensus/issues/27)<br>- [LBP](https://github.com/filecoin-project/consensus/issues/11)<br>- [Slashing](https://github.com/filecoin-project/consensus/issues/32)<br>- [VDF use](https://github.com/filecoin-project/consensus/issues/25)<br>- [Block time ](https://github.com/filecoin-project/consensus/issues/28) |
+| Random beacons and the Filecoin blockchain | Looking at and beyond the chain for trusted randomness in Filecoin | In Progress (70%) | -[issue](https://github.com/filecoin-project/consensus/issues/24)|
 
 ## FAQ
 
@@ -82,17 +71,18 @@ Most of our work to date focuses on
 
 Q: Alright, so Filecoin wants a permissionless, robustly reconfigurable consensus protocol that SPC can invoke to do leader election. There are a number of existing proof-of-stake protocol that may be adapted for this purpose. Why roll out our own?
 
-A: The answer comes down to a [number of factors]() that boil down to what we have found often happens when trying to adapt theoretical work to real-world security models, including:
+A: The answer comes down to a [number of factors](https://github.com/filecoin-project/consensus/issues/13) that boil down to what we have found often happens when trying to adapt theoretical work to real-world security models, including:
 - Wanting a secret leader election process (otherwise known as unpredictibility i.e. accounting for DOSing and adaptive attackers)
 - Wanting certain liveness guarantees that make MPCs unattractive
 - The complexity or partial omissions that we found in other candidate proposals
-- Accounting for certain "rational" miner behaviors that a lot of papers omit, including rushing the protocol (for which we use VDFs)
+- Accounting for certain "rational" miner behaviors that a lot of papers omit (e.g. [rushing the protocol](research-notes/waiting.md))
 
 With all of that said, it remains important to specify that our work builds upon existing work, notably Snow White, and we believe our security analysis will be based on that of E. Shi and R. Pass.
 
 **Common misconceptions**
 
 Q: Why does EC use tickets for randomness?
+
 A: 
 We use tickets for two reasons in the spec as currently laid out:
 - Preventing PoST precomputation - we use winning tickets from the previous block as our challenge for PoSTs.
@@ -100,14 +90,16 @@ We use tickets for two reasons in the spec as currently laid out:
 - Leader Election - we use the tickets from a past PoST as a means of secretly and provably checking whether someone has been elected to post the block
   - Wanted property: “verifiable” input on the chain common to all miners
 
-Ultimately, in leader election, we are using tickets in order to approximate a random beacon, but a promising area of research is to swap this source of randomness out for another on or off-chain source of verifiable randomness.
+Ultimately, in leader election, we are using tickets in order to approximate a [random beacon](./research-notes/randomness.md), but a promising area of research is to swap this source of randomness out for another on or off-chain source of verifiable randomness.
 
 Q: Is block generation the main way miners will earn FIL?
+
 A: No. Miners will also earn FIL through the Orders they manage on the network (dealing with clients).
 It is interesting to note that a miner must commit storage to the network (and thus appear in the power table) in order to participate in leader election and earn a block reward. This is in fact key to Filecoin's design of a `useful Proof of Work`.
 Further, it is worth noting that only storage miners participate in Filecoin consensus. Retrieval miners only earn FIL through deals.
 
 Q: Where does collateral come into this?
+
 A: This is a direct follow-up to the above question. Because miners earn FIL in two ways (through participation in leader election and in deals), collateral is used in Filecoin to ensure good behavior in both cases. Specifically:
 - The Filecoin protocol uses slashing to punish miners who break a contract (and do not prove they are storing client data).
 - Elected Consensus uses slashing in order to promote incentive compatibility: as a means of speeding up convergence/disincentivizing forks.
@@ -116,7 +108,8 @@ The collateral needs for both actions are distinct (in fact EC may not strictly 
 
 **EC vs SSLE**
 
-Q: Whart is the distinction between EC and SSLE?
+Q: What is the distinction between EC and SSLE?
+
 A: Both are consensus algorithms that can be invoked by SPC in order to perform leader election. They are interchangeable modules in a sense.
 Whereas EC will output a leader **on expectation** and could output none or multiple in a given round, SSLE guarantees that it will output at most a single leader.
 In that sense, one can think of EC as Secret Leader Election, whereas SSLE is Secret Single Leader Election.

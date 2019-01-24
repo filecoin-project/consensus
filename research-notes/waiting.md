@@ -1,6 +1,8 @@
-Waiting is irrational
+## Waiting is irationnal
+
 author: @zenground0
-===
+
+--------
 
 One the key assumptions behind the design of Filecoin consensus is that rational miners will not necessarily wait to release blocks in the protocol specified block time without some PoW-style hardware-enforced reason to wait. Waiting could be enforced by a PoST (though this appears to be deprecated) or a VDF.
 
