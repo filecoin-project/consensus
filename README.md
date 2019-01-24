@@ -7,10 +7,20 @@ One of Filecoin's main goals is to create a useful Proof-of-Work based on storag
 
 This repository houses a lot of our work on this area of research: Filecoin consensus. While it is by no means exhaustive, it should provide a good place from which to start engaging on Filecoin consensus research. You may also want to read up on [Filecoin](https://github.com/filecoin-project/specs) and [Filecoin Research](https://github.com/filecoin-project/research).
 
+Broadly, our goals are to:
+- Finalize design aspects of consensus starting with EC to make it secure and workable for wanted Filecoin design,
+- Formalize parameters and other implementation requirements in a clear Filecoin Ccnsensus spec implementable by a dev team,
+- Define and prove Filecoin consensus security properties.
+
+Note 1: Content here may be out-of-sync.
+Note 2: Throughout this repo, "miners" will most often refer to Filecoin Storage miners (unless otherwise specified). While we refer to both storage and retrieval miners as miners, strictu sensu, only participation in EC (from storage miners) is mining.
+
 ## Table of Contents
 
 - [What is consensus in Filecoin?](#what-is-consensus-in-filecoin?)
-
+- [Consensus Research](#consensus-research)
+- [FAQ](#faq)
+- [Communication](#communication)
 - [License](#license)
 
 ## What is consensus in Filecoin?
@@ -58,48 +68,64 @@ Most of our work to date focuses on
 | Slashing Spec | 
 
 
-## Common Questions
+- Randomness sampling strategy
+- Weighting Function impact on Consensus
+- Attack resistance and parameter choices
+- EC/SPC interface (for both SLE and SSLE)
+- Block Delay
+- Finality
 
-**Why EC?**
 
-Permissionless, robustly (dynamically) reconfigurable, (power table can be updated)
+## FAQ
 
-**Where does it fit into FIL?**
+**Why build EC?**
+
+Q: Alright, so Filecoin wants a permissionless, robustly reconfigurable consensus protocol that SPC can invoke to do leader election. There are a number of existing proof-of-stake protocol that may be adapted for this purpose. Why roll out our own?
+
+A: The answer comes down to a [number of factors]() that boil down to what we have found often happens when trying to adapt theoretical work to real-world security models, including:
+- Wanting a secret leader election process (otherwise known as unpredictibility i.e. accounting for DOSing and adaptive attackers)
+- Wanting certain liveness guarantees that make MPCs unattractive
+- The complexity or partial omissions that we found in other candidate proposals
+- Accounting for certain "rational" miner behaviors that a lot of papers omit, including rushing the protocol (for which we use VDFs)
+
+With all of that said, it remains important to specify that our work builds upon existing work, notably Snow White, and we believe our security analysis will be based on that of E. Shi and R. Pass.
 
 **Common misconceptions**
+
+Q: Why does EC use tickets for randomness?
+A: 
 We use tickets for two reasons in the spec as currently laid out:
-Preventing PoST precomputation - we use winning tickets from the previous block as our challenge for PoSTs.
-Wanted property of ticket: “verifiable” recency on the chain
-Leader Election - we use the tickets from a miner’s PoST as provable means of secretly and provably checking whether one’s been elected to post the block
-Wanted property of ticket: “verifiable” input on the chain
-Claim: These uses of tickets are entirely unrelated, and could be swapped out from some random on-chain or off-chain source of verifiable randomness.
-Collateral for what? (solved)
-Miners can earn FIL in two ways:
-by mining FIL through participation in EC
-May involve slashing as a means of speeding up convergence/disincentivizing divergence
-by fulfilling orders
-Will involve slashing as a means of punishing broken contracts
-We loosely refer to both of these as mining, in fact, strictu sensu, only participation in EC is mining
-Claim 1: The collateral needs for both actions are distinct different (in fact EC may not strictly require collateral).
-Claim 2: Only EC need involve FIL, for all intents and purposes market-making (renting out space) could happen through whatever currency
-As it happens the requirement for doing either of these actions is the same: pledging storage to the network, but the relationship between the two is complex:
-Mining implies fulfilling orders (no orders -> no power -> pointless mining)
-Fulfilled orders likely implies mining (if giving power to the network, why not try and earn extra income through consensus?)
-PoSTs for what?  (solved) -- from call today it was just a way to reuse a VDF
-Related to the above, it seems there are two reasons to generate PoSTs:
-Mining FIL (through EC)
-By creating a ticket
-By maintaining power table
-Proving storage to a client (in an order)
-Claim: miners elected to post a block should be incentivized to include other miners’ PoSTs in spite of the impact it has on the power table (and thus their likelihood to mine again)
-Block reward for what?
-Claim: In traditional PoW/PoS, miners participate in the system for the block reward; in our case, given a utility token, it may not be the main reason they do.
+- Preventing PoST precomputation - we use winning tickets from the previous block as our challenge for PoSTs.
+  - Wanted property: "verifiable recency"
+- Leader Election - we use the tickets from a past PoST as a means of secretly and provably checking whether someone has been elected to post the block
+  - Wanted property: “verifiable” input on the chain common to all miners
+
+Ultimately, in leader election, we are using tickets in order to approximate a random beacon, but a promising area of research is to swap this source of randomness out for another on or off-chain source of verifiable randomness.
+
+Q: Is block generation the main way miners will earn FIL?
+A: No. Miners will also earn FIL through the Orders they manage on the network (dealing with clients).
+It is interesting to note that a miner must commit storage to the network (and thus appear in the power table) in order to participate in leader election and earn a block reward. This is in fact key to Filecoin's design of a `useful Proof of Work`.
+Further, it is worth noting that only storage miners participate in Filecoin consensus. Retrieval miners only earn FIL through deals.
+
+Q: Where does collateral come into this?
+A: This is a direct follow-up to the above question. Because miners earn FIL in two ways (through participation in leader election and in deals), collateral is used in Filecoin to ensure good behavior in both cases. Specifically:
+- The Filecoin protocol uses slashing to punish miners who break a contract (and do not prove they are storing client data).
+- Elected Consensus uses slashing in order to promote incentive compatibility: as a means of speeding up convergence/disincentivizing forks.
+
+The collateral needs for both actions are distinct (in fact EC may not strictly require collateral).
 
 **EC vs SSLE**
 
+Q: Whart is the distinction between EC and SSLE?
+A: Both are consensus algorithms that can be invoked by SPC in order to perform leader election. They are interchangeable modules in a sense.
+Whereas EC will output a leader **on expectation** and could output none or multiple in a given round, SSLE guarantees that it will output at most a single leader.
+In that sense, one can think of EC as Secret Leader Election, whereas SSLE is Secret Single Leader Election.
+SSLE is an open-problem on which we are actively working as it should greatly simplify the Filecoin consensus construction and lead to faster convergence on the blockchain.
 
+## Communication
 
-## Other docs/sims
+- Slack channel: #filecoin-research
+- Issues in this repo
 
 ## License
 
