@@ -55,12 +55,14 @@ Most of our work to date focuses on these major endeavours.
 
 By design, these are meant to be extremely large, open-ended endeavours each of which breaks out into multiple open or completed problems. The endeavours themselves are evergreen sources of enquiry for and beyond Filecoin.
 
-| **Topic** | **Description** | **Status** | **Notes** |
-| --- | --- | --- | --- | --- |
-| Formal Treatment of Expected Consensus | Formal analysis of Expected Consensus' security guarantees | Preliminary (10%) | -[issue](https://github.com/filecoin-project/consensus/issues/19) |
+
+ | **Topic** | **Description** | **Status** | **Notes** |
+ | ---- | ---- | ---- | ---- |
+ | Formal Treatment of Expected Consensus | Formal analysis of Expected Consensus' security guarantees | Preliminary (10%) | -[issue](https://github.com/filecoin-project/consensus/issues/19) |
 | EC incentive compatibility | Simulation and probabilistic work to derive certainty around EC incentives | In Progress (20%) | - Chain convergence <br>- [Finality](https://github.com/filecoin-project/consensus/issues/29) |
 | Simulate EC Attacks | Bottoms-up analysis of EC security simulating likely attacks under various proportions of honest/rational/adversarial miners to iterate on protocol design | In Progress (25%) | -[issue](https://github.com/filecoin-project/consensus/issues/26) |
-| Secret Single Leader Election | Working out a full construction for SSLE. In spirit similar to cryptographic sortition but guaranteeing a single leader at every round | In Progress (25%) | - [issue](https://github.com/filecoin-project/research-private/issues/8) <br>- SSLE RFP |
+| Secret Single Leader 
+| Working out a full construction for SSLE. In spirit similar to cryptographic sortition but guaranteeing a single leader at every round | In Progress (25%) | - [issue](https://github.com/filecoin-project/research-private/issues/8) <br>- SSLE RFP |
 | Formalizing Power Fault Tolerance (PFT) | BFT is abstracted in terms of influence over the protocol rather than machines | In Progress (25%) | - [issue](https://github.com/filecoin-project/consensus/issues/38) |
 | Blockchain design | This broadly refers to design issues around EC and initial parameter setting for the Filecoin blockchain ensuring EC incentive compatibility using simulations or probabilistic proofs | In Progress (60%) | - [Weighting](https://github.com/filecoin-project/consensus/issues/27)<br>- [LBP](https://github.com/filecoin-project/consensus/issues/11)<br>- [Slashing](https://github.com/filecoin-project/consensus/issues/32)<br>- [VDF use](https://github.com/filecoin-project/consensus/issues/25)<br>- [Block time ](https://github.com/filecoin-project/consensus/issues/28) |
 | Random beacons and the Filecoin blockchain | Looking at and beyond the chain for trusted randomness in Filecoin | In Progress (70%) | -[issue](https://github.com/filecoin-project/consensus/issues/24)|
@@ -102,7 +104,7 @@ Q: Where does collateral come into this?
 
 A: This is a direct follow-up to the above question. Because miners earn FIL in two ways (through participation in leader election and in deals), collateral is used in Filecoin to ensure good behavior in both cases. Specifically:
 - The Filecoin protocol uses slashing to punish miners who break a contract (and do not prove they are storing client data).
-- Elected Consensus uses slashing in order to promote incentive compatibility: as a means of speeding up convergence/disincentivizing forks.
+- Expected Consensus uses slashing in order to promote incentive compatibility: as a means of speeding up convergence/disincentivizing forks.
 
 The collateral needs for both actions are distinct (in fact EC may not strictly require collateral).
 
