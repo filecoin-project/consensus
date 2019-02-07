@@ -1,2 +1,2 @@
 #!/bin/sh
-go build . && ./ec-sim-zs && dot -Tpng chain.dot -o chain.png && open chain.png
+go build && ./ec-sim-zs

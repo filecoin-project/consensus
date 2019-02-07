@@ -1,2 +1,2 @@
 #!/bin/sh
-dot -Tpng chain.dot -o chain.png && open chain.png
+dot -Tpng $1 -o chain.png && open chain.png
