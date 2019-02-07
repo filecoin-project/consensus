@@ -2,6 +2,8 @@
 # intermediate data structures useful for getting metrics used for analysis.
 # This dot file parser is super brittle.  It will break if we change the output
 # format and is likely unusable for most dot files.
+import argparse
+
 class Parser:
     def __init__(self, filename):
         self.readAndParse(filename)
@@ -177,7 +179,10 @@ def avgMaxForkRound(forwardEdges, backwardEdges, nodeToRank):
 
 
 if __name__ == '__main__':
-    chain = Parser("output-rounds=100-lbp=40-trial=1.dot")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", help="Pass in a .dot file.", default="output-rounds=100-lbp=1-trial=1.dot")
+    args = parser.parse_args()
+    chain = Parser(args.input)
     print(avgHeadsPerRound(chain.RankToNode, 10))
     print(ratioUsefulBlocks(chain.BackwardEdges, chain.AllNodes))
     print(avgMaxForkRound(chain.ForwardEdges, chain.BackwardEdges, chain.NodeToRank))
