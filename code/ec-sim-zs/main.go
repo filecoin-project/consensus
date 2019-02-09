@@ -38,8 +38,7 @@ func allTipsets(blks []*Block) map[string]*Tipset {
 		tipset := []*Block{blk1}
 		for j, blk2 := range blks {
 			if i != j {
-				if blk1.Parents.Name == blk2.Parents.Name &&
-					blk1.Height == blk2.Height {
+				if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
 					tipset = append(tipset, blk2)
 				}
 			}
@@ -236,12 +235,10 @@ func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
 }
 
-func (m *RationalMiner) SourceAllForks(newBlocks []*Block) {
-	// split the newblocks into all potential forkable tipsets
-	allTipsets := allTipsets(newBlocks)
+func (m *RationalMiner) SourceAllForks(ats map[string]*Tipset) {
 	// rational miner strategy look for all potential minblocks there
-	for k := range allTipsets {
-		forkTipsets := forkTipsets(allTipsets[k])
+	for _, v := range ats {
+		forkTipsets := forkTipsets(v)
 		for _, ts := range forkTipsets {
 			m.PrivateForks[ts.Name] = ts
 		}
@@ -251,9 +248,9 @@ func (m *RationalMiner) SourceAllForks(newBlocks []*Block) {
 // Mine outputs the block that a miner mines in a round where the leaves of
 // the block tree are given by newBlocks.  A miner will only ever mine one
 // block in a round because if it mines two or more it gets slashed.
-func (m *RationalMiner) Mine(newBlocks []*Block, lbp int) *Block {
+func (m *RationalMiner) Mine(ats map[string]*Tipset, lbp int) *Block {
 	// Start by combining existing pforks and new blocks available to mine atop of
-	m.SourceAllForks(newBlocks)
+	m.SourceAllForks(ats)
 
 	var nullBlocks []*Block
 	maxWeight := 0
@@ -425,9 +422,10 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 		printSingle(fmt.Sprintf("\n"))
 		printSingle(fmt.Sprintf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"))
 		var newBlocks = []*Block{}
+		ats := allTipsets(blocks)
 		for _, m := range miners {
 			// Each miner mines
-			blk := m.Mine(blocks, lbp)
+			blk := m.Mine(ats, lbp)
 			if blk != nil {
 				newBlocks = append(newBlocks, blk)
 			}
