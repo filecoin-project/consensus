@@ -32,6 +32,23 @@ func getUniqueID() int {
 
 // Input a set of newly mined blocks, return a map grouping these blocks
 // into tipsets that obey the tipset invariants.
+/*
+// This variant is slower for some bizarre reason... i'm perplexed
+func allTipsets(blks []*Block) []*Tipset {
+	var tipsets []*Tipset
+	for i, blk1 := range blks {
+		tipset := []*Block{blk1}
+		for _, blk2 := range blks[i+1:] {
+			if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
+				tipset = append(tipset, blk2)
+			}
+		}
+		tipsets = append(tipsets, NewTipset(tipset))
+	}
+	return tipsets
+}
+*/
+
 func allTipsets(blks []*Block) map[string]*Tipset {
 	tipsets := make(map[string]*Tipset)
 	for i, blk1 := range blks {
@@ -43,6 +60,7 @@ func allTipsets(blks []*Block) map[string]*Tipset {
 				}
 			}
 		}
+		sortBlocks(tipset)
 		key := stringifyBlocks(tipset)
 		if _, seen := tipsets[key]; !seen {
 			tipsets[key] = NewTipset(tipset)
@@ -90,13 +108,14 @@ type Tipset struct {
 
 // Tipset helper functions
 func NewTipset(blocks []*Block) *Tipset {
-	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
+	sortBlocks(blocks)
 	minTicket := int64(-1)
 	for _, block := range blocks {
 		if minTicket == int64(-1) || block.Seed < minTicket {
 			minTicket = block.Seed
 		}
 	}
+
 	return &Tipset{
 		Blocks:    blocks,
 		Name:      stringifyBlocks(blocks),
@@ -104,19 +123,20 @@ func NewTipset(blocks []*Block) *Tipset {
 	}
 }
 
-func getSortedBlockNames(blocks []*Block) []string {
-	var blockNames []string
-	for _, block := range blocks {
-		blockNames = append(blockNames, strconv.Itoa(block.Nonce))
-	}
-
-	sort.Strings(blockNames)
-	return blockNames
+func sortBlocks(blocks []*Block) {
+	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
 }
 
 func stringifyBlocks(blocks []*Block) string {
-	strBlocks := getSortedBlockNames(blocks)
-	return strings.Join(strBlocks, "-")
+	// blocks are already sorted... just do the easy thing
+	b := new(strings.Builder)
+	for i, blk := range blocks {
+		b.WriteString(strconv.Itoa(blk.Nonce))
+		if i != len(blocks)-1 {
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
 }
 
 func (ts *Tipset) getHeight() int {
@@ -235,11 +255,10 @@ func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
 }
 
-func (m *RationalMiner) SourceAllForks(ats map[string]*Tipset) {
+func (m *RationalMiner) SourceAllForks(atsforks [][]*Tipset) {
 	// rational miner strategy look for all potential minblocks there
-	for _, v := range ats {
-		forkTipsets := forkTipsets(v)
-		for _, ts := range forkTipsets {
+	for _, forks := range atsforks {
+		for _, ts := range forks {
 			m.PrivateForks[ts.Name] = ts
 		}
 	}
@@ -248,9 +267,9 @@ func (m *RationalMiner) SourceAllForks(ats map[string]*Tipset) {
 // Mine outputs the block that a miner mines in a round where the leaves of
 // the block tree are given by newBlocks.  A miner will only ever mine one
 // block in a round because if it mines two or more it gets slashed.
-func (m *RationalMiner) Mine(ats map[string]*Tipset, lbp int) *Block {
+func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 	// Start by combining existing pforks and new blocks available to mine atop of
-	m.SourceAllForks(ats)
+	m.SourceAllForks(atsforks)
 
 	var nullBlocks []*Block
 	maxWeight := 0
@@ -393,6 +412,7 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 	}
 
 	blocks := []*Block{gen}
+	atsforks := make([][]*Tipset, 0, 50)
 	var currentHeight int
 	for round := 0; round < roundNum; round++ {
 		// Update heaviest chain
@@ -422,10 +442,16 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 		printSingle(fmt.Sprintf("\n"))
 		printSingle(fmt.Sprintf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"))
 		var newBlocks = []*Block{}
+
 		ats := allTipsets(blocks)
+		atsforks = atsforks[:0]
+		for _, v := range ats {
+			atsforks = append(atsforks, forkTipsets(v))
+		}
+
 		for _, m := range miners {
 			// Each miner mines
-			blk := m.Mine(ats, lbp)
+			blk := m.Mine(atsforks, lbp)
 			if blk != nil {
 				newBlocks = append(newBlocks, blk)
 			}
