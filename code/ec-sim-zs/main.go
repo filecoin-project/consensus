@@ -35,17 +35,17 @@ func getUniqueID() int {
 /*
 // This variant is slower for some bizarre reason... i'm perplexed
 func allTipsets(blks []*Block) []*Tipset {
-	var tipsets []*Tipset
-	for i, blk1 := range blks {
-		tipset := []*Block{blk1}
-		for _, blk2 := range blks[i+1:] {
-			if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
-				tipset = append(tipset, blk2)
-			}
-		}
-		tipsets = append(tipsets, NewTipset(tipset))
-	}
-	return tipsets
+        var tipsets []*Tipset
+        for i, blk1 := range blks {
+                tipset := []*Block{blk1}
+                for _, blk2 := range blks[i+1:] {
+                        if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
+                                tipset = append(tipset, blk2)
+                        }
+                }
+                tipsets = append(tipsets, NewTipset(tipset))
+        }
+        return tipsets
 }
 */
 
@@ -69,11 +69,11 @@ func allTipsets(blks []*Block) map[string]*Tipset {
 	return tipsets
 }
 
-// forkTipsets returns the n subsets of a tipset of length n: for every ticket
+// forksFromTipset returns the n subsets of a tipset of length n: for every ticket
 // it returns a tipset containing the block containing that ticket and all blocks
 // containing a ticket larger than it.  This is a rational miner trying to mine
 // all possible non-slashable forks off of a tipset.
-func forkTipsets(ts *Tipset) []*Tipset {
+func forksFromTipset(ts *Tipset) []*Tipset {
 	var forks []*Tipset
 	// works because blocks are kept ordered in Tipsets
 	for i := range ts.Blocks {
@@ -255,7 +255,7 @@ func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
 }
 
-func (m *RationalMiner) SourceAllForks(atsforks [][]*Tipset) {
+func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
 	// rational miner strategy look for all potential minblocks there
 	for _, forks := range atsforks {
 		for _, ts := range forks {
@@ -269,7 +269,7 @@ func (m *RationalMiner) SourceAllForks(atsforks [][]*Tipset) {
 // block in a round because if it mines two or more it gets slashed.
 func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 	// Start by combining existing pforks and new blocks available to mine atop of
-	m.SourceAllForks(atsforks)
+	m.ConsiderAllForks(atsforks)
 
 	var nullBlocks []*Block
 	maxWeight := 0
@@ -412,6 +412,11 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 	}
 
 	blocks := []*Block{gen}
+	// Throughout we represent chains (or forks) as arrays of arrays of Tipsets.
+	// Tipsets are possible sets of blocks to mine of off in a given round.
+	// Arrays of tipsets represent the multiple choices a miner has in a given
+	//     round for a given chain.
+	// Arrays of arrays of tipsets represent each chain/fork.
 	atsforks := make([][]*Tipset, 0, 50)
 	var currentHeight int
 	for round := 0; round < roundNum; round++ {
@@ -444,9 +449,11 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 		var newBlocks = []*Block{}
 
 		ats := allTipsets(blocks)
+		// declaring atsforks outside of loop and reusing it for better mem mgmt
 		atsforks = atsforks[:0]
+		// map to array
 		for _, v := range ats {
-			atsforks = append(atsforks, forkTipsets(v))
+			atsforks = append(atsforks, forksFromTipset(v))
 		}
 
 		for _, m := range miners {
