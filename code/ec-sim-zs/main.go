@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -514,7 +515,9 @@ func main() {
 		if len(cts) == trials {
 			close(c)
 		}
-		// drawChain(result, fmt.Sprintf("rounds=%d-lbp=%d-ts=%d", roundNum, lbp, time.Now().Unix()), outputDir)
+		if !suite {
+			drawChain(result, fmt.Sprintf("rds=%d-lbp=%d-mins=%d-ts=%d", roundNum, lbp, totalMiners, time.Now().Unix()), outputDir)
+		}
 	}
 	_ = outputDir
 }
