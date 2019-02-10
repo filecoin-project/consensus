@@ -184,7 +184,7 @@ func (ct *chainTracker) setHead(blocks []*Block) {
 	for _, ts := range allTipsets(blocks) {
 		if ts.getWeight() > ct.head.getWeight() {
 			ct.head = ts
-			fmt.Printf("setting head to %s\n", ts.Name)
+			printSingle("setting head to %s\n", ts.Name)
 		}
 	}
 }
