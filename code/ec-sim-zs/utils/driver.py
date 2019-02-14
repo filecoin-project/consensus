@@ -1,13 +1,37 @@
 import argparse
+import subprocess
+
+PROGRAM = "./ec-sim-zs"
+
+def buildArgs(miners=-1, lbp=-1, trials=-1, rounds=-1, output="../output"):
+    params = ""
+    if rounds > 0:
+        params += " -rounds={}".format(rounds)
+    if miners > 0:
+        params += " -miners={}".format(miners)
+    if lbp > 0:
+        params += " -lbp={}".format(lbp)
+    if trials > 0:
+        params += " -trials={}".format(trials)
+    params += " -output={}".format(output)
+
+    return params
 
 def forksByNumberOfMiners():
     miners = range(1, 1000, 50)
     lbps = range(1, 200, 5)
-    trials = 3
+    miners = 10
+    lbp = 1
+    trials = 1
     rounds = 500
 
-    output="../output/forks-by-minersNum"
-    
+    outputDir="../output/forks-by-minersNum"
+
+    command = "{command}{params}".format(command=PROGRAM, params=buildArgs(miners,lbp,trials,rounds, outputDir))
+    print command
+    p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+    out, err = p.communicate()
+    print "output was {output}\n-*-*-*\nerr was {error}".format(output=out, error=err)
 
 if __name__ == "__main__":
     forksByNumberOfMiners()
