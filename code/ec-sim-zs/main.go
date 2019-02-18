@@ -21,6 +21,8 @@ var uniqueID int
 
 const bigOlNum = 100000
 
+//**** Utils
+
 func printSingle(content string) {
 	if !suite {
 		fmt.Printf(content)
@@ -30,6 +32,26 @@ func printSingle(content string) {
 func getUniqueID() int {
 	uniqueID += 1
 	return uniqueID - 1
+}
+
+//**** Helpers
+
+// makeGen makes the genesis block.  In the case the lbp is more than 1 it also
+// makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
+func makeGen(lbp int, totalMiners int) *Block {
+	var gen *Tipset
+	for i := 0; i < lbp; i++ {
+		gen = NewTipset([]*Block{&Block{
+			Nonce:   getUniqueID(),
+			Parents: gen,
+			Owner:   -1,
+			Height:  0,
+			Null:    false,
+			Weight:  0,
+			Seed:    rand.Int63n(int64(bigOlNum * totalMiners)),
+		}})
+	}
+	return gen.Blocks[0]
 }
 
 // Input a set of newly mined blocks, return a map grouping these blocks
@@ -88,6 +110,22 @@ func forksFromTipset(ts *Tipset) []*Tipset {
 	return forks
 }
 
+func sortBlocks(blocks []*Block) {
+	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
+}
+
+func stringifyBlocks(blocks []*Block) string {
+	// blocks are already sorted... just do the easy thing
+	b := new(strings.Builder)
+	for i, blk := range blocks {
+		b.WriteString(strconv.Itoa(blk.Nonce))
+		if i != len(blocks)-1 {
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
+
 //**** Structs
 
 // Block
@@ -101,6 +139,8 @@ type Block struct {
 	Weight  int     `json:"weight"`
 	Seed    int64   `json:"seed"`
 }
+
+// Exportable block (simply missing parents so we can avoid huge DAG)
 
 // Tipset
 type Tipset struct {
@@ -128,9 +168,8 @@ type RationalMiner struct {
 	Rand         *rand.Rand         `json:"rand"`
 }
 
-//**** End Structs
+//**** Tipset helpers
 
-// Tipset helper functions
 func NewTipset(blocks []*Block) *Tipset {
 	sortBlocks(blocks)
 	minTicket := int64(-1)
@@ -145,22 +184,6 @@ func NewTipset(blocks []*Block) *Tipset {
 		Name:      stringifyBlocks(blocks),
 		MinTicket: minTicket,
 	}
-}
-
-func sortBlocks(blocks []*Block) {
-	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Seed < blocks[j].Seed })
-}
-
-func stringifyBlocks(blocks []*Block) string {
-	// blocks are already sorted... just do the easy thing
-	b := new(strings.Builder)
-	for i, blk := range blocks {
-		b.WriteString(strconv.Itoa(blk.Nonce))
-		if i != len(blocks)-1 {
-			b.WriteByte('-')
-		}
-	}
-	return b.String()
 }
 
 func (ts *Tipset) getHeight() int {
@@ -186,6 +209,8 @@ func (ts *Tipset) getParents() *Tipset {
 	return ts.Blocks[0].Parents
 }
 
+//**** CT Helpers
+
 func NewChainTracker() *chainTracker {
 	return &chainTracker{
 		blocksByHeight: make(map[int][]*Block),
@@ -204,7 +229,8 @@ func (ct *chainTracker) setHead(blocks []*Block) {
 	}
 }
 
-// Rational Miner helper functions
+//**** Miner Helpers
+
 func NewRationalMiner(id int, power float64, totalMiners int, rng *rand.Rand) *RationalMiner {
 	return &RationalMiner{
 		Power:        power,
@@ -213,16 +239,6 @@ func NewRationalMiner(id int, power float64, totalMiners int, rng *rand.Rand) *R
 		TotalMiners:  totalMiners,
 		Rand:         rng,
 	}
-}
-
-// Input the base tipset for mining lookbackTipset will return the ancestor
-// tipset that should be used for sampling the leader election seed.
-// On LBP == 1, returns itself (as in no farther than direct parents)
-func lookbackTipset(tipset *Tipset, lbp int) *Tipset {
-	for i := 0; i < lbp-1; i++ {
-		tipset = tipset.getParents()
-	}
-	return tipset
 }
 
 // generateBlock makes a new block with the given parents
@@ -250,15 +266,13 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 	return nextBlock
 }
 
-func isWinningTicket(ticket int64, power float64, totalMiners int) bool {
-	// this is a simulation of ticket checking: the ticket is drawn uniformly from 0 to bigOlNum * totalMiners.
-	// If it is smaller than that * the miner's power (between 0 and 1), it wins.
-	return float64(ticket) < float64(bigOlNum)*float64(totalMiners)*power
-}
-
 // generateTicket
 func (m *RationalMiner) generateTicket(minTicket int64) int64 {
-	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
+	seed := minTicket + int64(m.ID)
+	r := rand.New(rand.NewSource(seed))
+	return r.Int63n(int64(bigOlNum * m.TotalMiners))
+
+	// return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
 }
 
 func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
@@ -269,6 +283,24 @@ func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
 		}
 	}
 }
+
+// Input the base tipset for mining lookbackTipset will return the ancestor
+// tipset that should be used for sampling the leader election seed.
+// On LBP == 1, returns itself (as in no farther than direct parents)
+func lookbackTipset(tipset *Tipset, lbp int) *Tipset {
+	for i := 0; i < lbp-1; i++ {
+		tipset = tipset.getParents()
+	}
+	return tipset
+}
+
+func isWinningTicket(ticket int64, power float64, totalMiners int) bool {
+	// this is a simulation of ticket checking: the ticket is drawn uniformly from 0 to bigOlNum * totalMiners.
+	// If it is smaller than that * the miner's power (between 0 and 1), it wins.
+	return float64(ticket) < float64(bigOlNum)*float64(totalMiners)*power
+}
+
+//**** Main logic
 
 // Mine outputs the block that a miner mines in a round where the leaves of
 // the block tree are given by newBlocks.  A miner will only ever mine one
@@ -311,124 +343,8 @@ func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 	return bestBlock
 }
 
-// makeGen makes the genesis block.  In the case the lbp is more than 1 it also
-// makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
-func makeGen(lbp int, totalMiners int) *Block {
-	var gen *Tipset
-	for i := 0; i < lbp; i++ {
-		gen = NewTipset([]*Block{&Block{
-			Nonce:   getUniqueID(),
-			Parents: gen,
-			Owner:   -1,
-			Height:  0,
-			Null:    false,
-			Weight:  0,
-			Seed:    rand.Int63n(int64(bigOlNum * totalMiners)),
-		}})
-	}
-	return gen.Blocks[0]
-}
-
-// writeChain output a json from which you can rebuild your chain tracker
-func writeChain(ct *chainTracker, name string, outputDir string) {
-	fmt.Printf(fmt.Sprintf("Writing Out %s\n", name))
-
-	fil, err := os.Create(fmt.Sprintf("%s/%s.json", outputDir, name))
-	if err != nil {
-		panic(err)
-	}
-	defer fil.Close()
-
-	// blocks list
-	blocks := make([]*Block, 0, len(ct.blocks))
-	for _, value := range ct.blocks {
-		blocks = append(blocks, value)
-	}
-
-	marshalledBlocks, err := json.Marshal(blocks[0])
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Fprintln(fil, marshalledBlocks)
-}
-
-// drawChain output a dot graph of the entire blockchain generated by the simulation
-func drawChain(ct *chainTracker, name string, outputDir string) {
-	fmt.Printf(fmt.Sprintf("Drawing Graph %s\n", name))
-
-	fil, err := os.Create(fmt.Sprintf("%s/%s.dot", outputDir, name))
-	if err != nil {
-		panic(err)
-	}
-	defer fil.Close()
-
-	fmt.Fprintln(fil, "digraph G {")
-	fmt.Fprintln(fil, "\t{\n\t\tnode [shape=plaintext];")
-
-	// Write out height index alongside the block graph
-	fmt.Fprintf(fil, "\t\t0")
-	// Start at 1 because we already wrote out the 0 for the .dot file
-	for cur := int(1); cur <= ct.maxHeight+1; cur++ {
-		fmt.Fprintf(fil, " -> %d", cur)
-	}
-	fmt.Fprintln(fil, ";")
-	fmt.Fprintln(fil, "\t}")
-
-	fmt.Fprintln(fil, "\tnode [shape=box];")
-	// Write out the "head" pointer to heaviest chain
-	// fmt.Fprintf(fil, "\t{ rank = same; %d;", ct.maxHeight+1)
-	// fmt.Fprintln(fil, "\"head\";}")
-	// for _, blk := range ct.head.Blocks {
-	// 	fmt.Fprintf(fil, "\t\"head\" -> \"b%d (m%d)\";\n", blk.Nonce, blk.Owner)
-	// }
-	fmt.Printf(fmt.Sprintf("HENRI HI %s", ct.blocksByHeight[0]))
-	// Write out the actual blocks
-	for cur := ct.maxHeight; cur >= 0; cur-- {
-		// get blocks per height
-		blocks, ok := ct.blocksByHeight[cur]
-
-		if cur == 0 {
-			fmt.Printf(fmt.Sprintf("at height 0, blocks: %d", len(blocks)))
-		}
-
-		// if no blocks at height, skip
-		if !ok {
-			continue
-		}
-
-		// for every block at this height
-		fmt.Fprintf(fil, "\t{ rank = same; %d;", cur)
-
-		for _, block := range blocks {
-			// print block
-			fmt.Fprintf(fil, " \"b%d (m%d)\";", block.Nonce, block.Owner)
-		}
-		fmt.Fprintln(fil, " }")
-
-		// link to parents
-		for _, block := range blocks {
-			// genesis has no parents
-			if block.Owner == -1 {
-				continue
-			}
-			parents := block.Parents
-			// Tipsets with null blocks only contain one block (since null blocks are mined privately)
-			// walk back until we find a tipset with a live parent
-			for parents.Blocks[0].Null {
-				parents = parents.Blocks[0].Parents
-			}
-			for _, parent := range parents.Blocks {
-				fmt.Fprintf(fil, "\t\"b%d (m%d)\" -> \"b%d (m%d)\";\n", block.Nonce, block.Owner, parent.Nonce, parent.Owner)
-			}
-		}
-	}
-
-	fmt.Fprintln(fil, "}\n")
-}
-
 func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
-	r := rand.New(rand.NewSource(rand.Int63())) // TODO: better seeding
+	r := rand.New(rand.NewSource(rand.Int63())) // TODO: better seeding, this line is not used right now
 
 	uniqueID = 0
 	chainTracker := NewChainTracker()
@@ -442,7 +358,6 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 
 	blocks := []*Block{gen}
 	// Throughout we represent chains (or forks) as arrays of arrays of Tipsets.
-	fmt.Printf(fmt.Sprintf("Here at round 0 -- %s", blocks))
 	// Tipsets are possible sets of blocks to mine of off in a given round.
 	// Arrays of tipsets represent the multiple choices a miner has in a given
 	//     round for a given chain.
@@ -501,6 +416,111 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 	// height is 0 indexed
 	chainTracker.maxHeight = roundNum - 1
 	c <- chainTracker
+}
+
+//**** IO
+
+// writeChain output a json from which you can rebuild your chain tracker
+func writeChain(ct *chainTracker, name string, outputDir string) {
+	fmt.Printf(fmt.Sprintf("Writing Out %s\n", name))
+
+	fil, err := os.Create(fmt.Sprintf("%s/%s.json", outputDir, name))
+	if err != nil {
+		panic(err)
+	}
+	defer fil.Close()
+
+	// What do we need?
+	// 1. Nodes: All blocks, including their details.
+	// 2. Edges: All pointers from block to block.
+	// 3. Miners: All miners.
+	// This should appropriately capture tipsets as well as full tree.
+	// TODO: some form of checksumming for this data (e.g. some stats about tispets or heads over time)
+
+	blocks := make([]*Block, 0, len(ct.blocks))
+	for _, value := range ct.blocks {
+		blocks = append(blocks, value)
+	}
+
+	marshalledBlocks, err := json.Marshal(blocks[:1])
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Fprintln(fil, string(marshalledBlocks))
+}
+
+// drawChain output a dot graph of the entire blockchain generated by the simulation
+func drawChain(ct *chainTracker, name string, outputDir string) {
+	fmt.Printf(fmt.Sprintf("Drawing Graph %s\n", name))
+
+	fil, err := os.Create(fmt.Sprintf("%s/%s.dot", outputDir, name))
+	if err != nil {
+		panic(err)
+	}
+	defer fil.Close()
+
+	fmt.Fprintln(fil, "digraph G {")
+	fmt.Fprintln(fil, "\t{\n\t\tnode [shape=plaintext];")
+
+	// Write out height index alongside the block graph
+	fmt.Fprintf(fil, "\t\t0")
+	// Start at 1 because we already wrote out the 0 for the .dot file
+	for cur := int(1); cur <= ct.maxHeight+1; cur++ {
+		fmt.Fprintf(fil, " -> %d", cur)
+	}
+	fmt.Fprintln(fil, ";")
+	fmt.Fprintln(fil, "\t}")
+
+	fmt.Fprintln(fil, "\tnode [shape=box];")
+	// Write out the "head" pointer to heaviest chain
+	// fmt.Fprintf(fil, "\t{ rank = same; %d;", ct.maxHeight+1)
+	// fmt.Fprintln(fil, "\"head\";}")
+	// for _, blk := range ct.head.Blocks {
+	//	fmt.Fprintf(fil, "\t\"head\" -> \"b%d (m%d)\";\n", blk.Nonce, blk.Owner)
+	// }
+	// Write out the actual blocks
+	for cur := ct.maxHeight; cur >= 0; cur-- {
+		// get blocks per height
+		blocks, ok := ct.blocksByHeight[cur]
+
+		if cur == 0 {
+			fmt.Printf(fmt.Sprintf("at height 0, blocks: %d", len(blocks)))
+		}
+
+		// if no blocks at height, skip
+		if !ok {
+			continue
+		}
+
+		// for every block at this height
+		fmt.Fprintf(fil, "\t{ rank = same; %d;", cur)
+
+		for _, block := range blocks {
+			// print block
+			fmt.Fprintf(fil, " \"b%d (m%d)\";", block.Nonce, block.Owner)
+		}
+		fmt.Fprintln(fil, " }")
+
+		// link to parents
+		for _, block := range blocks {
+			// genesis has no parents
+			if block.Owner == -1 {
+				continue
+			}
+			parents := block.Parents
+			// Tipsets with null blocks only contain one block (since null blocks are mined privately)
+			// walk back until we find a tipset with a live parent
+			for parents.Blocks[0].Null {
+				parents = parents.Blocks[0].Parents
+			}
+			for _, parent := range parents.Blocks {
+				fmt.Fprintf(fil, "\t\"b%d (m%d)\" -> \"b%d (m%d)\";\n", block.Nonce, block.Owner, parent.Nonce, parent.Owner)
+			}
+		}
+	}
+
+	fmt.Fprintln(fil, "}\n")
 }
 
 func main() {
