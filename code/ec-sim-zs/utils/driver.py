@@ -22,10 +22,10 @@ def forksByNumberOfMiners():
     lbps = range(1, 200, 5)
     miners = 10
     lbp = 1
-    trials = 1
+    trials = 2
     rounds = 500
 
-    outputDir="../output/forks-by-minersNum"
+    outputDir="output/forks-by-minersNum"
 
     command = "{command}{params}".format(command=PROGRAM, params=buildArgs(miners,lbp,trials,rounds, outputDir))
     print command

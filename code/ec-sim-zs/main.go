@@ -1,4 +1,5 @@
-// example run: ./long_sim -lbp=100 -rounds=10 -miners=10 -trials=100
+// example run: ./long_sim -lbp=100 -rounds=10 -miners=10 -trials=100 -output="output"
+
 package main
 
 import (
@@ -431,6 +432,14 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 func writeChain(ct *chainTracker, name string, outputDir string) {
 	fmt.Printf(fmt.Sprintf("Writing Out %s\n", name))
 
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		fmt.Printf("HERE")
+		err2 := os.MkdirAll(outputDir, 0755)
+		if err2 != nil {
+			panic(err2)
+		}
+	}
+
 	fil, err := os.Create(fmt.Sprintf("%s/%s.json", outputDir, name))
 	if err != nil {
 		panic(err)
@@ -440,6 +449,9 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 	// What do we need?
 	// 1. Nodes: All blocks, including their details.
 	// 2. Edges: Included in Node pointer to Tipset
+
+	// open JSON block
+	fmt.Fprintln(fil, "{")
 
 	blocks := make([]*Block, 0, len(ct.blocks))
 	for _, value := range ct.blocks {
@@ -451,9 +463,9 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 		panic(err)
 	}
 
-	fmt.Fprintln(fil, "{\"blocks\":")
+	fmt.Fprintln(fil, "\"blocks\":")
 	fmt.Fprintln(fil, string(marshalledBlocks))
-	fmt.Fprintln(fil, "},")
+	fmt.Fprintln(fil, ",")
 
 	// 3. Miners: All minersV
 	// This should appropriately capture tipsets as well as full tree.
@@ -463,8 +475,10 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 		panic(err)
 	}
 
-	fmt.Fprintln(fil, "{\"miners\":")
+	fmt.Fprintln(fil, "\"miners\":")
 	fmt.Fprintln(fil, string(marshalledMiners))
+
+	// close JSON block
 	fmt.Fprintln(fil, "}")
 }
 

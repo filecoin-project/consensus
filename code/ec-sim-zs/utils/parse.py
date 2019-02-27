@@ -4,6 +4,9 @@
 # format and is likely unusable for most dot files.
 import argparse
 
+class ChainTracker:
+
+
 class Parser:
     def __init__(self, filename):
         self.readAndParse(filename)
