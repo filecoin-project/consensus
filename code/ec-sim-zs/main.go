@@ -3,9 +3,11 @@
 package main
 
 import (
+	crand "crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math/big"
 	"math/rand"
 	"os"
 	"runtime/pprof"
@@ -35,6 +37,15 @@ func getUniqueID() int {
 	return uniqueID - 1
 }
 
+func randInt(limit int64) int64 {
+	limitBig := big.NewInt(limit)
+	n, err := crand.Int(crand.Reader, limitBig)
+	if err != nil {
+		panic(err)
+	}
+	return n.Int64()
+}
+
 //**** Helpers
 
 // makeGen makes the genesis block.  In the case the lbp is more than 1 it also
@@ -49,7 +60,7 @@ func makeGen(lbp int, totalMiners int) *Block {
 			Height:  0,
 			Null:    false,
 			Weight:  0,
-			Seed:    rand.Int63n(int64(bigOlNum * totalMiners)),
+			Seed:    randInt(int64(bigOlNum * totalMiners)), // 12, // rand.Int63n(int64(bigOlNum * totalMiners)),
 		}})
 	}
 	return gen.Blocks[0]
@@ -277,10 +288,11 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 // generateTicket
 func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 	seed := minTicket + int64(m.ID)
-	r := rand.New(rand.NewSource(seed))
-	return r.Int63n(int64(bigOlNum * m.TotalMiners))
+	// r := rand.New(rand.NewSource(seed))
+	// return r.Int63n(int64(bigOlNum * m.TotalMiners))
 
-	// return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
+	m.Rand.Seed(seed)
+	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
 }
 
 func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
@@ -352,7 +364,8 @@ func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 }
 
 func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
-	r := rand.New(rand.NewSource(rand.Int63())) // TODO: better seeding, this line is not used right now
+	seed := randInt(1 << 62)
+	r := rand.New(rand.NewSource(seed)) // TODO: this line is not used right now
 
 	uniqueID = 0
 	miners := make([]*RationalMiner, totalMiners)
@@ -556,7 +569,6 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 }
 
 func main() {
-
 	fLbp := flag.Int("lbp", 1, "sim lookback")
 	fRoundNum := flag.Int("rounds", 100, "number of rounds to sim")
 	fTotalMiners := flag.Int("miners", 10, "number of miners to sim")
