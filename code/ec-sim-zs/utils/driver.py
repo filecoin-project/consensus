@@ -1,5 +1,10 @@
 import argparse
 import subprocess
+import importlib
+import json_parse
+import os
+from os import listdir
+from os.path import isfile, join
 
 PROGRAM = "./ec-sim-zs"
 
@@ -32,6 +37,13 @@ def forksByNumberOfMiners():
     p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
     out, err = p.communicate()
     print "output was {output}\n-*-*-*\nerr was {error}".format(output=out, error=err)
+    
+    onlyfiles = [join(outputDir, f) for f in listdir(outputDir) if isfile(join(outputDir, f))]
+    for f in onlyfiles:
+        Tree = blocktree.BlockTree(f)
+        print(Tree.RatioUsefulBlocks())
 
 if __name__ == "__main__":
     forksByNumberOfMiners()
+
+    
