@@ -239,15 +239,24 @@ func NewChainTracker(miners []*RationalMiner) *chainTracker {
 
 // setHead updates the heaviest tipset seen by the network.
 func (ct *chainTracker) setHead(blocks []*Block) {
+	candidateHead := ct.head
 	for _, ts := range allTipsets(blocks) {
-		if ts.getWeight() > ct.head.getWeight() {
-			ct.head = ts
-			ts.WasHead = true
-			printSingle(fmt.Sprintf("setting head to %s\n", ts.Name))
-
-			for _, blk := range ts.Blocks {
-				blk.InHead = true
+		if ts.getWeight() > candidateHead.getWeight() {
+			candidateHead = ts
+		} else if ts.getWeight() == candidateHead.getWeight() {
+			// if of equal weight, pick min ticket
+			if ts.MinTicket < candidateHead.MinTicket {
+				candidateHead = ts
 			}
+		}
+	}
+
+	if candidateHead != ct.head {
+		printSingle(fmt.Sprintf("setting head to %s\n", ct.head.Name))
+		ct.head = candidateHead
+		ct.head.WasHead = true
+		for _, blk := range ct.head.Blocks {
+			blk.InHead = true
 		}
 	}
 }
