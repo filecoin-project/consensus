@@ -180,12 +180,6 @@ type RationalMiner struct {
 	Rand         *rand.Rand         `json:"-"`
 }
 
-//**** Block helpers
-
-func (b *Block) sansParent() {
-
-}
-
 //**** Tipset helpers
 
 func NewTipset(blocks []*Block) *Tipset {
@@ -217,7 +211,8 @@ func (ts *Tipset) getWeight() int {
 		panic("Don't call weight on no parents")
 	}
 	// Works because all blocks in a tipset have the same parent (see allTipsets)
-	return len(ts.Blocks) + ts.Blocks[0].Weight - 1
+	// block weight is equal to parent tipset weight, so we simply add the number of blocks here.
+	return len(ts.Blocks) + ts.Blocks[0].Weight
 }
 
 func (ts *Tipset) getParents() *Tipset {
