@@ -54,6 +54,7 @@ func makeGen(lbp int, totalMiners int) *Block {
 	var gen *Tipset
 	for i := 0; i < lbp; i++ {
 		gen = NewTipset([]*Block{&Block{
+			InHead:  true,
 			Nonce:   getUniqueID(),
 			Parents: gen,
 			Owner:   -1,
@@ -150,6 +151,7 @@ type Block struct {
 	Null    bool    `json:"null"`
 	Weight  int     `json:"weight"`
 	Seed    int64   `json:"seed"`
+	InHead  bool    `json:"inHead"`
 }
 
 // Tipset
@@ -159,6 +161,7 @@ type Tipset struct {
 	Blocks    []*Block `json:"-"`
 	Name      string   `json:"name"`
 	MinTicket int64    `json:"minTicket"`
+	WasHead   bool     `json:"wasHead"`
 }
 
 // Chain tracker
@@ -195,6 +198,7 @@ func NewTipset(blocks []*Block) *Tipset {
 		Blocks:    blocks,
 		Name:      stringifyBlocks(blocks),
 		MinTicket: minTicket,
+		WasHead:   false,
 	}
 }
 
@@ -238,7 +242,12 @@ func (ct *chainTracker) setHead(blocks []*Block) {
 	for _, ts := range allTipsets(blocks) {
 		if ts.getWeight() > ct.head.getWeight() {
 			ct.head = ts
+			ts.WasHead = true
 			printSingle(fmt.Sprintf("setting head to %s\n", ts.Name))
+
+			for _, blk := range ts.Blocks {
+				blk.InHead = true
+			}
 		}
 	}
 }
@@ -275,6 +284,7 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 		Height:  parents.getHeight() + 1,
 		Weight:  parents.getWeight(),
 		Seed:    t,
+		InHead:  false,
 	}
 
 	// check lotteryTicket to see if the block can be published
@@ -547,7 +557,11 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 
 		for _, block := range blocks {
 			// print block
-			fmt.Fprintf(fil, " \"b%d (m%d)\";", block.Nonce, block.Owner)
+			if block.InHead {
+				fmt.Fprintf(fil, " \"b%d (m%d)\" [color=\"red\", style=\"bold\"];", block.Nonce, block.Owner)
+			} else {
+				fmt.Fprintf(fil, " \"b%d (m%d)\";", block.Nonce, block.Owner)
+			}
 		}
 		fmt.Fprintln(fil, " }")
 
