@@ -250,11 +250,18 @@ func NewRationalMiner(id int, power float64, totalMiners int, rng *rand.Rand) *R
 }
 
 // generateBlock makes a new block with the given parents
+// note that while it uses a "null block abstraction" rather than ticket arrays as in
+// the spec, the result is the same for consensus.
+// To that end, we use separate tickets for new ticket generation and election proof generation
+// in case there is randomness skew (though can't think of what it would be rn)
 func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 	// Given parents and id we have a unique source for new ticket
-	minTicket := lookbackTipset(parents, lbp).MinTicket
+	lotteryTicket := lookbackTipset(parents, lbp).MinTicket
+	lastTicket := lookbackTipset(parents, 1).MinTicket
 
-	t := m.generateTicket(minTicket)
+	// generate a new ticket from parent tipset
+	t := m.generateTicket(lastTicket)
+	// include in new block
 	nextBlock := &Block{
 		Nonce:   getUniqueID(),
 		Parents: parents,
@@ -264,7 +271,9 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 		Seed:    t,
 	}
 
-	if isWinningTicket(t, m.Power, m.TotalMiners) {
+	// check lotteryTicket to see if the block can be published
+	electionProof := m.generateTicket(lotteryTicket)
+	if isWinningTicket(electionProof, m.Power, m.TotalMiners) {
 		nextBlock.Null = false
 		nextBlock.Weight += 1
 	} else {
@@ -274,7 +283,7 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 	return nextBlock
 }
 
-// generateTicket
+// generateTicket, simulates a VRF
 func (m *RationalMiner) generateTicket(minTicket int64) int64 {
 	seed := minTicket + int64(m.ID)
 	r := rand.New(rand.NewSource(seed))
