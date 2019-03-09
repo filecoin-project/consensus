@@ -54,14 +54,14 @@ func makeGen(lbp int, totalMiners int) *Block {
 	var gen *Tipset
 	for i := 0; i < lbp; i++ {
 		gen = NewTipset([]*Block{&Block{
-			InHead:  true,
-			Nonce:   getUniqueID(),
-			Parents: gen,
-			Owner:   -1,
-			Height:  0,
-			Null:    false,
-			Weight:  0,
-			Seed:    randInt(int64(bigOlNum * totalMiners)), // 12, // rand.Int63n(int64(bigOlNum * totalMiners)),
+			InHead:       true,
+			Nonce:        getUniqueID(),
+			Parents:      gen,
+			Owner:        -1,
+			Height:       0,
+			Null:         false,
+			ParentWeight: 0,
+			Seed:         randInt(int64(bigOlNum * totalMiners)), // 12, // rand.Int63n(int64(bigOlNum * totalMiners)),
 		}})
 	}
 	return gen.Blocks[0]
@@ -144,14 +144,14 @@ func stringifyBlocks(blocks []*Block) string {
 // Block
 type Block struct {
 	// Nonce is unique for each block
-	Nonce   int     `json:"nonce"`
-	Parents *Tipset `json:"tipset"`
-	Owner   int     `json:"owner"`
-	Height  int     `json:"height"`
-	Null    bool    `json:"null"`
-	Weight  int     `json:"weight"`
-	Seed    int64   `json:"seed"`
-	InHead  bool    `json:"inHead"`
+	Nonce        int     `json:"nonce"`
+	Parents      *Tipset `json:"tipset"`
+	Owner        int     `json:"owner"`
+	Height       int     `json:"height"`
+	Null         bool    `json:"null"`
+	ParentWeight int     `json:"parentWeight"`
+	Seed         int64   `json:"seed"`
+	InHead       bool    `json:"inHead"`
 }
 
 // Tipset
@@ -162,6 +162,7 @@ type Tipset struct {
 	Name      string   `json:"name"`
 	MinTicket int64    `json:"minTicket"`
 	WasHead   bool     `json:"wasHead"`
+	Weight    int      `json:"weight"`
 }
 
 // Chain tracker
@@ -183,9 +184,27 @@ type RationalMiner struct {
 	Rand         *rand.Rand         `json:"-"`
 }
 
+//**** Block helpers
+
+// Walk back until we find a tipset with a live parent
+func (bl *Block) liveParents() *Tipset {
+	// Tipsets with null blocks only contain one block (since null blocks are mined privately)
+	// All blocks in a tipset share parents
+	parents := bl.Parents
+	for parents.Blocks[0].Null {
+		parents = parents.Blocks[0].Parents
+	}
+	return parents
+}
+
 //**** Tipset helpers
 
 func NewTipset(blocks []*Block) *Tipset {
+
+	if len(blocks) == 0 {
+		panic("Don't call weight on no parents")
+	}
+
 	sortBlocks(blocks)
 	minTicket := int64(-1)
 	for _, block := range blocks {
@@ -194,11 +213,20 @@ func NewTipset(blocks []*Block) *Tipset {
 		}
 	}
 
+	// Setting weight works because all blocks in a tipset have the same parent (see allTipsets)
+	// block weight is equal to parent tipset weight, so we simply add the number of non-null
+	// blocks here.
+	tsWeight := blocks[0].ParentWeight
+	if !blocks[0].Null {
+		tsWeight += len(blocks)
+	}
+
 	return &Tipset{
 		Blocks:    blocks,
 		Name:      stringifyBlocks(blocks),
 		MinTicket: minTicket,
 		WasHead:   false,
+		Weight:    tsWeight,
 	}
 }
 
@@ -208,15 +236,6 @@ func (ts *Tipset) getHeight() int {
 	}
 	// Works because all blocks in a tipset have same height (see allTipsets)
 	return ts.Blocks[0].Height
-}
-
-func (ts *Tipset) getWeight() int {
-	if len(ts.Blocks) == 0 {
-		panic("Don't call weight on no parents")
-	}
-	// Works because all blocks in a tipset have the same parent (see allTipsets)
-	// block weight is equal to parent tipset weight, so we simply add the number of blocks here.
-	return len(ts.Blocks) + ts.Blocks[0].Weight
 }
 
 func (ts *Tipset) getParents() *Tipset {
@@ -241,9 +260,9 @@ func NewChainTracker(miners []*RationalMiner) *chainTracker {
 func (ct *chainTracker) setHead(blocks []*Block) {
 	candidateHead := ct.head
 	for _, ts := range allTipsets(blocks) {
-		if ts.getWeight() > candidateHead.getWeight() {
+		if ts.Weight > candidateHead.Weight {
 			candidateHead = ts
-		} else if ts.getWeight() == candidateHead.getWeight() {
+		} else if ts.Weight == candidateHead.Weight {
 			// if of equal weight, pick min ticket
 			if ts.MinTicket < candidateHead.MinTicket {
 				candidateHead = ts
@@ -283,24 +302,30 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 	lotteryTicket := lookbackTipset(parents, lbp).MinTicket
 	lastTicket := lookbackTipset(parents, 1).MinTicket
 
+	// Also need live parents off of which to calculate new weight
+	liveParents := parents
+	if parents.Blocks[0].Null {
+		// null blocks will only ever be in single-block tipsets so this works
+		liveParents = parents.Blocks[0].liveParents()
+	}
+
 	// generate a new ticket from parent tipset
 	t := m.generateTicket(lastTicket)
 	// include in new block
 	nextBlock := &Block{
-		Nonce:   getUniqueID(),
-		Parents: parents,
-		Owner:   m.ID,
-		Height:  parents.getHeight() + 1,
-		Weight:  parents.getWeight(),
-		Seed:    t,
-		InHead:  false,
+		Nonce:        getUniqueID(),
+		Parents:      parents,
+		Owner:        m.ID,
+		Height:       parents.getHeight() + 1,
+		ParentWeight: liveParents.Weight,
+		Seed:         t,
+		InHead:       false,
 	}
 
 	// check lotteryTicket to see if the block can be published
 	electionProof := m.generateTicket(lotteryTicket)
 	if isWinningTicket(electionProof, m.Power, m.TotalMiners) {
 		nextBlock.Null = false
-		nextBlock.Weight += 1
 	} else {
 		nextBlock.Null = true
 	}
@@ -359,9 +384,9 @@ func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 	for k := range m.PrivateForks {
 		// generateBlock takes in a block's parent tipset, as in current head of PrivateForks
 		blk := m.generateBlock(m.PrivateForks[k], lbp)
-		if !blk.Null && blk.Weight > maxWeight {
+		if !blk.Null && blk.ParentWeight > maxWeight {
 			bestBlock = blk
-			maxWeight = blk.Weight
+			maxWeight = blk.ParentWeight
 		} else if blk.Null && bestBlock == nil {
 			// if blk is null and we haven't found a winning block yet
 			// we will want to extend private forks with it
@@ -541,12 +566,6 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 	fmt.Fprintln(fil, "\t}")
 
 	fmt.Fprintln(fil, "\tnode [shape=box];")
-	// Write out the "head" pointer to heaviest chain
-	// fmt.Fprintf(fil, "\t{ rank = same; %d;", ct.maxHeight+1)
-	// fmt.Fprintln(fil, "\"head\";}")
-	// for _, blk := range ct.head.Blocks {
-	//	fmt.Fprintf(fil, "\t\"head\" -> \"b%d (m%d)\";\n", blk.Nonce, blk.Owner)
-	// }
 	// Write out the actual blocks
 	for cur := ct.maxHeight; cur >= 0; cur-- {
 		// get blocks per height
@@ -580,13 +599,7 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 			if block.Owner == -1 {
 				continue
 			}
-			parents := block.Parents
-			// Tipsets with null blocks only contain one block (since null blocks are mined privately)
-			// walk back until we find a tipset with a live parent
-			for parents.Blocks[0].Null {
-				parents = parents.Blocks[0].Parents
-			}
-			for _, parent := range parents.Blocks {
+			for _, parent := range block.liveParents().Blocks {
 				fmt.Fprintf(fil, "\t\"b%d (m%d)\" -> \"b%d (m%d)\";\n", block.Nonce, block.Owner, parent.Nonce, parent.Owner)
 			}
 		}
