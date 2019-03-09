@@ -168,11 +168,11 @@ type Tipset struct {
 // Chain tracker
 type chainTracker struct {
 	// index tipsets per height
-	blocksByHeight map[int][]*Block `json:"blocksByHeight"`
-	blocks         map[int]*Block   `json:"blocks"`
-	maxHeight      int              `json:"maxHeight"`
-	head           *Tipset          `json:"head"`
-	miners         []*RationalMiner `json:"miner"`
+	liveBlocksByHeight map[int][]*Block `json:"liveBlocksByHeight"`
+	allBlocks          map[int]*Block   `json:"allBlocks"`
+	maxHeight          int              `json:"maxHeight"`
+	head               *Tipset          `json:"head"`
+	miners             []*RationalMiner `json:"miner"`
 }
 
 // Rational Miner
@@ -249,10 +249,10 @@ func (ts *Tipset) getParents() *Tipset {
 
 func NewChainTracker(miners []*RationalMiner) *chainTracker {
 	return &chainTracker{
-		blocksByHeight: make(map[int][]*Block),
-		blocks:         make(map[int]*Block),
-		maxHeight:      -1,
-		miners:         miners,
+		liveBlocksByHeight: make(map[int][]*Block),
+		allBlocks:          make(map[int]*Block),
+		maxHeight:          -1,
+		miners:             miners,
 	}
 }
 
@@ -373,7 +373,7 @@ func isWinningTicket(ticket int64, power float64, totalMiners int) bool {
 // Mine outputs the block that a miner mines in a round where the leaves of
 // the block tree are given by newBlocks.  A miner will only ever mine one
 // block in a round because if it mines two or more it gets slashed.
-func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
+func (m *RationalMiner) Mine(ct *chainTracker, atsforks [][]*Tipset, lbp int) *Block {
 	// Start by combining existing pforks and new blocks available to mine atop of
 	m.ConsiderAllForks(atsforks)
 
@@ -392,6 +392,11 @@ func (m *RationalMiner) Mine(atsforks [][]*Tipset, lbp int) *Block {
 			// we will want to extend private forks with it
 			// no need to do it if blk is not null since the pforks will get deleted anyways
 			nullBlocks = append(nullBlocks, blk)
+
+			// we will also want to add this null block to the set of allBlocks we track
+			// this will allow us to reform full history in case a winning block is
+			// mined off of the null block
+			ct.allBlocks[blk.Nonce] = blk
 		}
 	}
 
@@ -437,16 +442,16 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 		// Update heaviest chain
 		chainTracker.setHead(blocks)
 
-		// Cache blocks for future stats
+		// Cache live blocks for future stats
 		for _, blk := range blocks {
-			chainTracker.blocks[blk.Nonce] = blk
+			chainTracker.allBlocks[blk.Nonce] = blk
 		}
 
 		// checking an assumption
 		if len(blocks) > 0 {
 			currentHeight = blocks[0].Height
 			// add new blocks if we have any!
-			chainTracker.blocksByHeight[currentHeight] = blocks
+			chainTracker.liveBlocksByHeight[currentHeight] = blocks
 		}
 		for _, blk := range blocks {
 			if currentHeight != blk.Height {
@@ -473,7 +478,7 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 
 		for _, m := range miners {
 			// Each miner mines
-			blk := m.Mine(atsforks, lbp)
+			blk := m.Mine(chainTracker, atsforks, lbp)
 			if blk != nil {
 				newBlocks = append(newBlocks, blk)
 			}
@@ -514,8 +519,8 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 	// open JSON block
 	fmt.Fprintln(fil, "{")
 
-	blocks := make([]*Block, 0, len(ct.blocks))
-	for _, value := range ct.blocks {
+	blocks := make([]*Block, 0, len(ct.allBlocks))
+	for _, value := range ct.allBlocks {
 		blocks = append(blocks, value)
 	}
 
@@ -569,7 +574,7 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 	// Write out the actual blocks
 	for cur := ct.maxHeight; cur >= 0; cur-- {
 		// get blocks per height
-		blocks, ok := ct.blocksByHeight[cur]
+		blocks, ok := ct.liveBlocksByHeight[cur]
 
 		if cur == 0 {
 			fmt.Printf(fmt.Sprintf("at height 0, blocks: %d", len(blocks)))
