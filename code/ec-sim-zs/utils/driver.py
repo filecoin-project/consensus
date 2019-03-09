@@ -65,7 +65,7 @@ def sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir):
             onlyfiles = [join(outputDir, f) for f in listdir(outputDir) if isfile(join(outputDir, f))]
             for f in onlyfiles:
                 tree = blocktree.BlockTree(f)
-                print(tree.AvgHeadsPerRound())
+                print(tree.NumReorgs())
 
 # readSweepData traverses the directories of a sweep output, runs metrics on 
 # the outputs and returns a map data[lbp][minerNum][metric] to data series.
@@ -86,6 +86,9 @@ def readSweepData(miners, lbps, metrics, sweepDir):
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
                         data[lbp][m][metric].append(tree.AvgHeadsPerRound())
+                    if metric == "NumReorgs":
+                        print(tree.NumReorgs())
+                        data[lbp][m][metric].append(tree.NumReorgs())
     return data
 
 # plotMetricSweep plots the mean value of a metric varying over the number of miners
@@ -120,14 +123,17 @@ def plotSweep(miners, lbps, metrics, sweepDir):
                 
 
 if __name__ == "__main__":
-    miners = [10, 50, 100, 500]
-    lbps = [5, 10, 50]
-    trials = 2
-    rounds = 500
-    sweepDir = "output/sweep"
+    miners = [15]
+    lbps = [10]
+    trials = 1
+    rounds = 100
+    sweepDir = "output/sweep-e"
+
+    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
 
 #    sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
-    plotSweep(miners, lbps, ["AvgHeadsPerRound"], sweepDir)
+#    plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
+
 
 
     
