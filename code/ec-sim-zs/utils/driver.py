@@ -62,10 +62,6 @@ def sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir):
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             out, err = p.communicate()
             print "output was {output}\n-*-*-*\nerr was {error}".format(output=out, error=err)
-            onlyfiles = [join(outputDir, f) for f in listdir(outputDir) if isfile(join(outputDir, f))]
-            for f in onlyfiles:
-                tree = blocktree.BlockTree(f)
-                print(tree.NumReorgs())
 
 # readSweepData traverses the directories of a sweep output, runs metrics on 
 # the outputs and returns a map data[lbp][minerNum][metric] to data series.
@@ -123,16 +119,27 @@ def plotSweep(miners, lbps, metrics, sweepDir):
                 
 
 if __name__ == "__main__":
-    miners = [15]
-    lbps = [10]
-    trials = 1
-    rounds = 100
-    sweepDir = "output/sweep-e"
+    # TODO -- should use argparse to set values of these slices or read from config file
+    miners = [10, 50, 100]
+    lbps = [10, 20, 50]
+    trials = 2
+    rounds = 400
+    sweepDir = "output/sweep-f"
 
-    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
 
-#    sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
-#    plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
+    # TODO -- shoulduse argparse to express which operations should be done:
+    #   run simulation and output (sweepByMinersAndLBP), plot existing data 
+    #   (plotMetricSweep), or load and print data (printing of data doesn't
+    #   exist yet but is easy to do alongside readSweepData)
+
+    # right now I simply comment things out and rewrite vals in this function,
+    # which might be good enough for a while.
+
+    
+#    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
+
+    sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
+    plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
 
 
 
