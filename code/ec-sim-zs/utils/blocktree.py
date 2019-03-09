@@ -28,20 +28,19 @@ class BlockTree:
 
     ### Extract various metrics from the block tree.
 
-    # HeaviestChain returns a set of blocks that form the heaviest chain in the
-    # block tree
+    # HeaviestChain returns a set of nonces of blocks that form the heaviest
+    # chain in the block tree.
     def HeaviestChain(self):
         length = len(self.BlocksByHeight)
-        cur = heaviestAtHeight(length)
+        cur = self.heaviestAtHeight(length)
         curHeight = cur["height"]
         chain = set()
-        chain.add(cur)
+        chain.add(cur["nonce"])
         while curHeight > 0:
             next = parentNonces(cur["tipset"]["name"])
-            for nonce = next:
-                chain.add(self.BlocksByNonce[nonce])
+            for nonce in next:
+                chain.add(nonce)
             cur = self.BlocksByNonce[next[0]] 
-        chain.add(self.BlocksByHeight[0][0]) # add genesis block
 
     # RatioUsefulBlocks returns the ratio of blocks making it into the 
     # heaviest chain to the total blocks mined
@@ -49,13 +48,24 @@ class BlockTree:
         mainChain = self.HeaviestChain()
         return float(len(mainChain)) / float(len(self.BlocksByHeight))
 
+    # AvgHeadsPerRound returns the mean number of possible mining heads per
+    # round.
+    def AvgHeadsPerRound(self):
+        acc = 0.0
+        numTrials = len(self.BlocksByHeight)
+        for round in range(0, numTrials):
+            if round in self.BlocksByHeight:
+                acc += len(self.BlocksByHeight[round])
+                
+        return acc / float(numTrials) 
+
     # NumReorgs returns the number of times that the heaviest tipset in round
     # n was on a different fork from the heaviest tipset at round n - 1.
     def NumReorgs(self):
         raise "lalala"
 
-    def heaviestAtHeight(self, n):
-        if n not in self.BlocksByHeight:
+    def heaviestAtHeight(self, h):
+        if h not in self.BlocksByHeight:
             raise "no BlocksByHeight entry at height " + string(n)
         hBlock = None
         hWeight = -1
