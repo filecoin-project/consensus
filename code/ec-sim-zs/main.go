@@ -61,7 +61,7 @@ func makeGen(lbp int, totalMiners int) *Block {
 			Height:       0,
 			Null:         false,
 			ParentWeight: 0,
-			Seed:         randInt(int64(bigOlNum * totalMiners)), // 12, // rand.Int63n(int64(bigOlNum * totalMiners)),
+			Seed:         uint64(randInt(int64(bigOlNum * totalMiners))),
 		}})
 	}
 	return gen.Blocks[0]
@@ -69,39 +69,16 @@ func makeGen(lbp int, totalMiners int) *Block {
 
 // Input a set of newly mined blocks, return a map grouping these blocks
 // into tipsets that obey the tipset invariants.
-/*
-// This variant is slower for some bizarre reason... i'm perplexed
 func allTipsets(blks []*Block) []*Tipset {
-        var tipsets []*Tipset
-        for i, blk1 := range blks {
-                tipset := []*Block{blk1}
-                for _, blk2 := range blks[i+1:] {
-                        if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
-                                tipset = append(tipset, blk2)
-                        }
-                }
-                tipsets = append(tipsets, NewTipset(tipset))
-        }
-        return tipsets
-}
-*/
-
-func allTipsets(blks []*Block) map[string]*Tipset {
-	tipsets := make(map[string]*Tipset)
+	tipsets := make([]*Tipset, 0, len(blks))
 	for i, blk1 := range blks {
 		tipset := []*Block{blk1}
-		for j, blk2 := range blks {
-			if i != j {
-				if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
-					tipset = append(tipset, blk2)
-				}
+		for _, blk2 := range blks[i+1:] {
+			if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
+				tipset = append(tipset, blk2)
 			}
 		}
-		sortBlocks(tipset)
-		key := stringifyBlocks(tipset)
-		if _, seen := tipsets[key]; !seen {
-			tipsets[key] = NewTipset(tipset)
-		}
+		tipsets = append(tipsets, NewTipset(tipset))
 	}
 	return tipsets
 }
@@ -150,7 +127,7 @@ type Block struct {
 	Height       int     `json:"height"`
 	Null         bool    `json:"null"`
 	ParentWeight int     `json:"parentWeight"`
-	Seed         int64   `json:"seed"`
+	Seed         uint64  `json:"seed"`
 	InHead       bool    `json:"inHead"`
 }
 
@@ -160,7 +137,7 @@ type Tipset struct {
 	// Blocks are sorted
 	Blocks    []*Block `json:"-"`
 	Name      string   `json:"name"`
-	MinTicket int64    `json:"minTicket"`
+	MinTicket uint64   `json:"minTicket"`
 	WasHead   bool     `json:"wasHead"`
 	Weight    int      `json:"weight"`
 }
@@ -206,9 +183,9 @@ func NewTipset(blocks []*Block) *Tipset {
 	}
 
 	sortBlocks(blocks)
-	minTicket := int64(-1)
+	minTicket := blocks[0].Seed
 	for _, block := range blocks {
-		if minTicket == int64(-1) || block.Seed < minTicket {
+		if block.Seed < minTicket {
 			minTicket = block.Seed
 		}
 	}
@@ -324,7 +301,7 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 
 	// check lotteryTicket to see if the block can be published
 	electionProof := m.generateTicket(lotteryTicket)
-	if isWinningTicket(electionProof, m.Power, m.TotalMiners) {
+	if isWinningTicket(electionProof, m.Power) {
 		nextBlock.Null = false
 	} else {
 		nextBlock.Null = true
@@ -334,13 +311,17 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 }
 
 // generateTicket, simulates a VRF
-func (m *RationalMiner) generateTicket(minTicket int64) int64 {
-	seed := minTicket + int64(m.ID)
-	// r := rand.New(rand.NewSource(seed))
-	// return r.Int63n(int64(bigOlNum * m.TotalMiners))
+func (m *RationalMiner) generateTicket(minTicket uint64) uint64 {
+	// old way
+	seed := minTicket + uint64(m.ID)
+	m.Rand.Seed(int64(seed))
+	return uint64(m.Rand.Int63n(int64(bigOlNum)))
 
-	m.Rand.Seed(seed)
-	return m.Rand.Int63n(int64(bigOlNum * m.TotalMiners))
+	// return fnv hash of ticket + miner id
+	// hash := fnv.New64()
+	// hash.Write([]byte(fmt.Sprintf("%d%d", minTicket, m.ID)))
+	// fmt.Println(hash.Sum64())
+	// return hash.Sum64() % uint64(bigOlNum)
 }
 
 func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
@@ -362,10 +343,10 @@ func lookbackTipset(tipset *Tipset, lbp int) *Tipset {
 	return tipset
 }
 
-func isWinningTicket(ticket int64, power float64, totalMiners int) bool {
-	// this is a simulation of ticket checking: the ticket is drawn uniformly from 0 to bigOlNum * totalMiners.
+func isWinningTicket(ticket uint64, power float64) bool {
+	// this is a simulation of ticket checking: the ticket is drawn uniformly from 0 to bigOlNum
 	// If it is smaller than that * the miner's power (between 0 and 1), it wins.
-	return float64(ticket) < float64(bigOlNum)*float64(totalMiners)*power
+	return float64(ticket) < float64(bigOlNum)*power
 }
 
 //**** Main logic
@@ -417,8 +398,8 @@ func (m *RationalMiner) Mine(ct *chainTracker, atsforks [][]*Tipset, lbp int) *B
 }
 
 func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
-	seed := randInt(1 << 62)
-	r := rand.New(rand.NewSource(seed)) // TODO: this line is not used right now
+	seed := randInt(1 << 62) // this is ok because crypto library should return new set each time (vs having to use timestamp to seed)
+	r := rand.New(rand.NewSource(seed))
 
 	uniqueID = 0
 	miners := make([]*RationalMiner, totalMiners)
@@ -661,7 +642,7 @@ func main() {
 		}
 
 		// capture chain for future use
-		writeChain(result, chainName, outputDir)
+		// writeChain(result, chainName, outputDir)
 
 		// if single trial, draw output
 		if !suite {
