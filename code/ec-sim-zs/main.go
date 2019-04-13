@@ -642,7 +642,7 @@ func main() {
 		}
 
 		// capture chain for future use
-		// writeChain(result, chainName, outputDir)
+		writeChain(result, chainName, outputDir)
 
 		// if single trial, draw output
 		if !suite {

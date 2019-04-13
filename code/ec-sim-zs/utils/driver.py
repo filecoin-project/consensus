@@ -4,6 +4,7 @@ import subprocess
 import os
 from os import listdir
 from os.path import isfile, join
+import sys
 
 # simulation output parser 
 import blocktree
@@ -140,7 +141,3 @@ if __name__ == "__main__":
 
     sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
     plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
-
-
-
-    

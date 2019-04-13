@@ -1,4 +1,5 @@
 import json
+import pdb
 
 # Parse a block tree from json
 class BlockTree:
@@ -9,6 +10,8 @@ class BlockTree:
         # Setup output datastructures.
         self.BlocksByNonce = dict()
         self.BlocksByHeight = dict()
+        self.BlocksByParentWeight = dict()
+        self.MaxWeight = 0
         self.Miners = []
         self.TotalNonNull = 0
         
@@ -23,6 +26,12 @@ class BlockTree:
                 if h not in self.BlocksByHeight:
                     self.BlocksByHeight[h] = []
                 self.BlocksByHeight[h].append(block)
+                w = block["parentWeight"]
+                if w not in self.BlocksByParentWeight:
+                    self.BlocksByParentWeight[w] = []
+                self.BlocksByParentWeight[w].append(block)
+                if w > self.MaxWeight:
+                    self.MaxWeight = w
                 if not block["null"]:
                     self.TotalNonNull += 1
                 
@@ -31,28 +40,46 @@ class BlockTree:
 
     ### Extract various metrics from the block tree.
 
-    # HeaviestChain returns a set of nonces of blocks that form the heaviest
+    # HeaviestChains returns an array of sets of nonces of blocks that form the heaviest
     # chain in the block tree.
-    def HeaviestChain(self):
-        length = len(self.BlocksByHeight)
-        heaviestTipSet = self.heaviestAtHeight(length-1)
-        chain = set()
-        for blk in heaviestTipSet:
-            chain.add(blk["nonce"])
-        cur = heaviestTipSet[0]
-        curHeight = cur["height"]
-        while curHeight > 0:
-            next = parentNonces(cur["tipset"]["name"])
-            for nonce in next:
-                chain.add(nonce)
-            cur = self.BlocksByNonce[next[0]]
+    def HeaviestChains(self):
+        # get the heaviest live TipSets
+        heaviestBlocks = []
+        maxWeight = self.MaxWeight
+        while not heaviestBlocks:
+            heaviestBlocks = filter(lambda x: not x["null"], self.BlocksByParentWeight[maxWeight])
+            maxWeight -= 1
+
+        heaviestTipsets = dict()
+        for block in heaviestBlocks:
+            parentsName = block["tipset"]["name"]
+            if not parentsName in heaviestTipsets:
+                heaviestTipsets[parentsName] = []
+            heaviestTipsets[parentsName].append(block)
+
+        chains = []
+        for tipset in heaviestTipsets.keys():
+            chain = set()
+            heaviestTS = heaviestTipsets[tipset]
+            for blk in heaviestTS:
+                chain.add(blk["nonce"])
+            # all will have the same parents and height so only need to take first
+            cur = heaviestTS[0]
             curHeight = cur["height"]
-        return chain
+            while curHeight > 0:
+                next = parentNonces(cur["tipset"]["name"])
+                for nonce in next:
+                    chain.add(nonce)
+                cur = self.BlocksByNonce[next[0]]
+                curHeight = cur["height"]
+            chains += sorted(chain)
+        return chains
+        # TODO: potentially do something if there are multiple chains of same weight (unlikely)
 
     # RatioUsefulBlocks returns the ratio of blocks making it into the 
     # heaviest chain to the total blocks mined.
     def RatioUsefulBlocks(self):
-        mainChain = self.HeaviestChain()
+        mainChain = self.HeaviestChains()[0]
         return float(self.countNonNullBlocks(mainChain)) / float(self.TotalNonNull)
 
     # AvgHeadsPerRound returns the mean number of possible mining heads per
