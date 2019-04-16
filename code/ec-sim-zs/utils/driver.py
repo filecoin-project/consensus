@@ -2,6 +2,7 @@
 import argparse
 import subprocess
 import datetime
+import time
 import os
 from os import listdir
 from os.path import isfile, join
@@ -73,7 +74,7 @@ def readSweepData(miners, lbps, metrics, sweepDir):
 # plotMetricSweep plots the mean value of a metric varying over the number of miners
 # mining on the chain.  It plots multiple series, one for each lbp value in the
 # sweep.
-def plotMetricSweep(data, metric):
+def plotMetricSweep(data, metric, sweepDir):
     lbps = sorted([lbp for lbp in data])
     for lbp in lbps:
         series = []
@@ -86,6 +87,8 @@ def plotMetricSweep(data, metric):
     plt.ylabel(metric)
     plt.legend(["k="+str(lbp) for lbp in sorted(lbps)] , loc='upper right')
     plt.title(metric + " varied over miner number and lookback parameter k")
+    fig1 = plt.gcf()
+    fig1.savefig("{name}-{time}.png".format(name=sweepDir,time=milliTS()), format="png")
     plt.show()
         
                 
@@ -98,8 +101,10 @@ def plotSweep(miners, lbps, metrics, sweepDir):
 
     # Plot data for each metric
     for metric in metrics:
-        plotMetricSweep(data, metric)
+        plotMetricSweep(data, metric, sweepDir)
                 
+def milliTS():
+    return int(round(time.time() * 1000))
 
 if __name__ == "__main__":
     # TODO -- should use argparse to set values of these slices or read from config file
@@ -133,6 +138,6 @@ if __name__ == "__main__":
     400 rounds, 400 miners ===> 40m"""
     )
 
-    sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
-#    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
+    # sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
+    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
     plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
