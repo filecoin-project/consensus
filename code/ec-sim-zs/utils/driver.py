@@ -24,31 +24,10 @@ def buildArgs(miners=-1, lbp=-1, trials=-1, rounds=-1, output="../output"):
         params += " -lbp={}".format(lbp)
     if trials > 0:
         params += " -trials={}".format(trials)
+    params += " -quiet"
     params += " -output={}".format(output)
 
     return params
-
-def forksByNumberOfMiners():
-    miners = range(1, 1000, 50)
-    lbps = range(1, 200, 5)
-    miners = 10
-    lbp = 1
-    trials = 2
-    rounds = 500
-
-    outputDir="output/forks-by-minersNum"
-
-    command = "{command}{params}".format(command=PROGRAM, params=buildArgs(miners,lbp,trials,rounds, outputDir))
-    print command
-    p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-    out, err = p.communicate()
-    print "output was {output}\n-*-*-*\nerr was {error}".format(output=out, error=err)
-    
-    onlyfiles = [join(outputDir, f) for f in listdir(outputDir) if isfile(join(outputDir, f))]
-    for f in onlyfiles:
-        Tree = blocktree.BlockTree(f)
-        print(Tree.AvgHeadsPerRound())
-
 
 def sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir):
     data = dict()
@@ -83,9 +62,10 @@ def readSweepData(miners, lbps, metrics, sweepDir):
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
                         data[lbp][m][metric].append(tree.AvgHeadsPerRound())
+                        print "average heads per round was {avg}".format(avg= Tree.AvgHeadsPerRound())
                     if metric == "NumReorgs":
-                        print(tree.NumReorgs())
                         data[lbp][m][metric].append(tree.NumReorgs())
+                        print "num reorgs on avg was {reorgs}".format(reorgs=tree.NumReorgs())
     return data
 
 # plotMetricSweep plots the mean value of a metric varying over the number of miners
@@ -121,10 +101,10 @@ def plotSweep(miners, lbps, metrics, sweepDir):
 
 if __name__ == "__main__":
     # TODO -- should use argparse to set values of these slices or read from config file
-    miners = [10, 50, 100]
-    lbps = [10, 20, 50]
-    trials = 2
-    rounds = 400
+    miners = [10, 50, 100, 200, 400]
+    lbps = [1, 10, 20, 50, 100]
+    trials = 1
+    rounds = 500
     sweepDir = "output/sweep-f"
 
 

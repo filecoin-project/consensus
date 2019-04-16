@@ -1,3 +1,4 @@
 *.pyc
 *.swp
 ec-sim-zs
+output/*

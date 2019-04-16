@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
+	"math"
 	"math/big"
 	"math/rand"
 	"os"
@@ -22,7 +24,7 @@ var suite bool
 
 var uniqueID int
 
-const bigOlNum = 100000
+const bigOlNum = math.MaxUint32
 
 //**** Utils
 
@@ -313,15 +315,16 @@ func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
 // generateTicket, simulates a VRF
 func (m *RationalMiner) generateTicket(minTicket uint64) uint64 {
 	// old way
-	seed := minTicket + uint64(m.ID)
-	m.Rand.Seed(int64(seed))
-	return uint64(m.Rand.Int63n(int64(bigOlNum)))
+	// seed := minTicket + uint64(m.ID)
+	// m.Rand.Seed(int64(seed))
+	// return uint64(m.Rand.Int63n(int64(bigOlNum)))
 
 	// return fnv hash of ticket + miner id
-	// hash := fnv.New64()
-	// hash.Write([]byte(fmt.Sprintf("%d%d", minTicket, m.ID)))
-	// fmt.Println(hash.Sum64())
-	// return hash.Sum64() % uint64(bigOlNum)
+	// Hacks R Us: reversing minTicket and m.ID somehow makes this very non pseudo-random
+	hash := fnv.New64()
+	hash.Write([]byte(fmt.Sprintf("%d%d", m.ID, minTicket)))
+	newTix := hash.Sum64() % bigOlNum
+	return newTix
 }
 
 func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
@@ -595,6 +598,7 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 }
 
 func main() {
+	fQuiet := flag.Bool("quiet", false, "will prevent .dot file creation")
 	fLbp := flag.Int("lbp", 1, "sim lookback")
 	fRoundNum := flag.Int("rounds", 100, "number of rounds to sim")
 	fTotalMiners := flag.Int("miners", 10, "number of miners to sim")
@@ -602,6 +606,7 @@ func main() {
 	fOutput := flag.String("output", ".", "output folder")
 
 	flag.Parse()
+	quiet := *fQuiet
 	lbp := *fLbp
 	roundNum := *fRoundNum
 	totalMiners := *fTotalMiners
@@ -621,7 +626,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	suite = trials > 1
+	suite = trials > 1 || quiet
+
 	var cts []*chainTracker
 	c := make(chan *chainTracker, trials)
 	for n := 0; n < trials; n++ {
