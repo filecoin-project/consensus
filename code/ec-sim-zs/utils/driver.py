@@ -61,6 +61,7 @@ def readSweepData(miners, lbps, metrics, sweepDir):
             # traverse files
             onlyfiles = [join(outputDir, f) for f in listdir(outputDir) if isfile(join(outputDir, f))]
             for f in onlyfiles:
+                print "Currently on {cFile}".format(cFile=f)
                 tree = blocktree.BlockTree(f)
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
