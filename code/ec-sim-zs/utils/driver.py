@@ -1,6 +1,7 @@
 # system utils
 import argparse
 import subprocess
+import datetime
 import os
 from os import listdir
 from os.path import isfile, join
@@ -38,6 +39,7 @@ def sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir):
             data[lbp][m] = []
             outputDir = lbpDir + "/miner-" + str(m)
             command = "{command}{params}".format(command=PROGRAM, params=buildArgs(m,lbp,trials,rounds, outputDir))     
+            print "\ntime is {time}".format(time=datetime.datetime.now())
             print command
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             out, err = p.communicate()
@@ -118,6 +120,19 @@ if __name__ == "__main__":
 
     
 #    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
+    print("""runs can take a while and scale quadratically in number of rounds and exponentially in number of miners. E.g.
+    100 rounds, 50 miners  ===> 2.5s
+    100 rounds, 200 miners ===> 45s
+    100 rounds, 400 miners ===> 5m13s
+
+    200 rounds, 50 miners  ===> 4.8s
+    200 rounds, 200 miners ===> 1m52s
+    200 rounds, 400 miners ===> 12m44s
+
+    400 rounds, 50 miners  ===> 13s
+    400 rounds, 200 miners ===> 6m51s
+    400 rounds, 400 miners ===> 40m"""
+    )
 
     sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
     plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
