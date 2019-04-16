@@ -67,7 +67,7 @@ def readSweepData(miners, lbps, metrics, sweepDir):
                         print "average heads per round was {avg}".format(avg= Tree.AvgHeadsPerRound())
                     if metric == "NumReorgs":
                         data[lbp][m][metric].append(tree.NumReorgs())
-                        print "num reorgs on avg was {reorgs}".format(reorgs=tree.NumReorgs())
+                        print "num reorgs was {reorgs}".format(reorgs=tree.NumReorgs())
     return data
 
 # plotMetricSweep plots the mean value of a metric varying over the number of miners
@@ -119,7 +119,6 @@ if __name__ == "__main__":
     # which might be good enough for a while.
 
     
-#    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
     print("""runs can take a while and scale quadratically in number of rounds and exponentially in number of miners. E.g.
     100 rounds, 50 miners  ===> 2.5s
     100 rounds, 200 miners ===> 45s
@@ -135,4 +134,5 @@ if __name__ == "__main__":
     )
 
     sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
+#    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
     plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
