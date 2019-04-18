@@ -12,6 +12,9 @@ import sys
 import blocktree
 
 # plotting
+import matplotlib
+# use different backend ahead of importing pyplot for running remotely
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 PROGRAM = "./ec-sim-zs"
