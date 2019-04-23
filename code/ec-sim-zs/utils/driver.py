@@ -66,6 +66,7 @@ def readSweepData(miners, lbps, metrics, sweepDir):
             for f in onlyfiles:
                 print "Currently on {cFile}".format(cFile=f)
                 tree = blocktree.BlockTree(f)
+                print "Done building blocktree"
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
                         data[lbp][m][metric].append(tree.AvgHeadsPerRound())

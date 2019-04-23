@@ -17,7 +17,8 @@ class BlockTree:
         
         with open(filename, 'r') as jfile:
             data = json.load(jfile)
-            
+            print "loaded {file}".format(file=filename)
+
             # Get all blocks.  Add all into indexes.
             blocks = data["blocks"]
             for block in blocks:
@@ -34,9 +35,11 @@ class BlockTree:
                     self.MaxWeight = w
                 if not block["null"]:
                     self.TotalNonNull += 1
-                
+            print "parsed blocks"
+
             # Get all miners
             self.Miners = data["miners"]
+            print "parsed miners"
 
     ### Extract various metrics from the block tree.
 
