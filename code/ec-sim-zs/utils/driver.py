@@ -67,6 +67,7 @@ def readSweepData(miners, lbps, metrics, sweepDir):
                 print "Currently on {cFile}".format(cFile=f)
                 tree = blocktree.BlockTree(f)
                 print "Done building blocktree"
+                print "\ntime is {time}".format(time=datetime.datetime.now())
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
                         data[lbp][m][metric].append(tree.AvgHeadsPerRound())
@@ -115,9 +116,10 @@ if __name__ == "__main__":
     # TODO -- should use argparse to set values of these slices or read from config file
     miners = [10, 50, 100, 200, 400]
     lbps = [1, 10, 20, 50, 100]
-    trials = 1
+    trials = 3
     rounds = 500
-    sweepDir = "output/sweep-f"
+    sweepDir = "/output/sweep-f"
+    # sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
 
 
     # TODO -- shoulduse argparse to express which operations should be done:
