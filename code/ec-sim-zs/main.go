@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,7 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var suite bool
 
 var uniqueID int
+var _IDLock sync.Mutex
 
 const bigOlNum = math.MaxUint32
 
@@ -35,6 +37,8 @@ func printSingle(content string) {
 }
 
 func getUniqueID() int {
+	_IDLock.Lock()
+	defer _IDLock.Unlock()
 	uniqueID += 1
 	return uniqueID - 1
 }
@@ -49,7 +53,7 @@ func randInt(limit int64) int64 {
 }
 
 //**** Helpers
-
+// TODO: fix this hack with a special case
 // makeGen makes the genesis block.  In the case the lbp is more than 1 it also
 // makes lbp -1 genesis ancestors for sampling the first lbp - 1 blocks after genesis
 func makeGen(lbp int, totalMiners int) *Block {
@@ -404,7 +408,6 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 	seed := randInt(1 << 62) // this is ok because crypto library should return new set each time (vs having to use timestamp to seed)
 	r := rand.New(rand.NewSource(seed))
 
-	uniqueID = 0
 	miners := make([]*RationalMiner, totalMiners)
 	chainTracker := NewChainTracker(miners)
 	gen := makeGen(lbp, totalMiners)
@@ -536,7 +539,7 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 func drawChain(ct *chainTracker, name string, outputDir string) {
 	fmt.Printf(fmt.Sprintf("Drawing Graph %s\n", name))
 
-	fil, err := os.Create(fmt.Sprintf("%s/%s.dot", outputDir, name))
+	fil, err := os.Create(fmt.Sprintf("%s/dot/%s.dot", outputDir, name))
 	if err != nil {
 		panic(err)
 	}
@@ -652,7 +655,7 @@ func main() {
 
 		// if single trial, draw output
 		if !suite {
-			drawChain(result, chainName, ".")
+			drawChain(result, chainName, outputDir)
 		}
 	}
 }

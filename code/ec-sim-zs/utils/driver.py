@@ -118,8 +118,7 @@ if __name__ == "__main__":
     lbps = [1, 10, 20, 50, 100]
     trials = 3
     rounds = 500
-    sweepDir = "/output/sweep-f"
-    # sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
+    sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
 
 
     # TODO -- shoulduse argparse to express which operations should be done:
