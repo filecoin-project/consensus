@@ -1,6 +1,13 @@
 /* Expected Consensus
 --------------------------------- MODULE ec ---------------------------------
 EXTENDS Integers, TLC, FiniteSets, Sequences
+CONSTANT miners, NumMiners, USE_RANDOM
+
+MaxRounds == 20
+EarlyKill == 20
+MaxLeaders == 5
+rounds == 1..MaxRounds
+
 
 Min(set) ==
     CHOOSE x \in set: \A y \in set: x <= y
@@ -10,13 +17,8 @@ Range(f) ==
 
 (* --algorithm ExpectedConsensus
 variables
-    NumMiners=5;
-    miners = 1..NumMiners;
-    MaxRounds=10;
-    MaxLeaders = 3;
-    rounds = 1..MaxRounds;
-    miner_rounds = [miner \in miners |-> 0];
-    leaders = <<{}>>;
+    miner_rounds = [miner \in miners |-> 2];
+    leaders = <<{<<CHOOSE miner \in miners: TRUE, {}>>}, {}>>; \* Let someone win the first round.
     
 define
     FairMining ==
@@ -24,41 +26,70 @@ define
 
     BoundedLeaders == 
         ~\E leader_group \in Range(leaders): Cardinality(leader_group) > MaxLeaders
-        
+    ModelBoundedLeaders == 
+        ~\E leader_group \in Range(leaders): Cardinality(leader_group) > MaxLeaders - 1
+    
+    \* This invariant is used to force an error trace after MaxRounds.
     NoProgress ==
-        miner_rounds[CHOOSE m \in miners: TRUE] < 11
-        
-    Scratch(miner) ==
+        /\ Len(leaders) < MaxRounds 
+        /\ miner_rounds \in [miners -> 0..MaxRounds]
+
+    Scratch(miner, tipset) ==
         \* all have equal chance of winning
-        LET e == RandomElement(miners) IN
-            e = miner
+        RandomElement(miners) = miner
 
 end define;
 
-process miner \in miners
+fair process miner \in miners
 begin
     Start:
-        await miner_rounds[self] <= Min(Range(miner_rounds));
-        if Scratch(self) then
-            leaders := <<Head(leaders) \union {self}>> \o Tail(leaders);
-        else 
-            skip;
-        end if;
-        
-    Tick:
+        await /\ miner_rounds[self] = Min(Range(miner_rounds))
+              /\ Len(leaders) >= miner_rounds[self] - 1;      
+        if miner_rounds[self] >= MaxRounds then goto Done end if;
+    Elect:
+        with current_leaders = leaders[miner_rounds[self] - 1] do 
+            if current_leaders = {} then
+                leaders[Len(leaders)] := leaders[Len(leaders)] \union {<<self, {}>>};
+            
+                skip; \* TODO: Handle null mining.
+            else
+                with tipset \in SUBSET {x[1] : x \in current_leaders }  do
+                    if USE_RANDOM then
+                        if Scratch(self, tipset) then
+                            leaders[Len(leaders)] := leaders[Len(leaders)] \union {<<self, tipset>>};
+                        else 
+                            skip;
+                        end if;
+                    else
+                        with scratched \in BOOLEAN do
+                            if scratched then
+                                leaders[Len(leaders)] := leaders[Len(leaders)] \union {<<self, tipset>>};
+                            else 
+                                skip;
+                            end if;
+                        end with;
+                    end if;
+                end with;
+            end if;
+        end with;
+
         miner_rounds[self] := miner_rounds[self] + 1;
-        if \A miner \in miners: miner_rounds[miner] = Min(Range(miner_rounds)) then
-            leaders := <<{}>> \o leaders;
-        end if;
     goto Start;
                 
+end process;
+
+fair process ticker = "ticker"
+begin
+    Tick:
+        await \A m \in miners: miner_rounds[m] = Min(Range(miner_rounds));
+        leaders := Append(leaders, {});
+        goto Tick;
 end process;
 
 end algorithm; *)
 
 \* BEGIN TRANSLATION
-VARIABLES NumMiners, miners, MaxRounds, MaxLeaders, rounds, miner_rounds, 
-          leaders, pc
+VARIABLES miner_rounds, leaders, pc
 
 (* define statement *)
 FairMining ==
@@ -66,62 +97,78 @@ FairMining ==
 
 BoundedLeaders ==
     ~\E leader_group \in Range(leaders): Cardinality(leader_group) > MaxLeaders
+ModelBoundedLeaders ==
+    ~\E leader_group \in Range(leaders): Cardinality(leader_group) > MaxLeaders - 1
+
 
 NoProgress ==
-    miner_rounds[CHOOSE m \in miners: TRUE] < 11
+    /\ Len(leaders) < MaxRounds
+    /\ miner_rounds \in [miners -> 0..MaxRounds]
 
-Scratch(miner) ==
+Scratch(miner, tipset) ==
 
-    LET e == RandomElement(miners) IN
-        e = miner
+    RandomElement(miners) = miner
 
 
-vars == << NumMiners, miners, MaxRounds, MaxLeaders, rounds, miner_rounds, 
-           leaders, pc >>
+vars == << miner_rounds, leaders, pc >>
 
-ProcSet == (miners)
+ProcSet == (miners) \cup {"ticker"}
 
 Init == (* Global variables *)
-        /\ NumMiners = 5
-        /\ miners = 1..NumMiners
-        /\ MaxRounds = 10
-        /\ MaxLeaders = 3
-        /\ rounds = 1..MaxRounds
-        /\ miner_rounds = [miner \in miners |-> 0]
-        /\ leaders = <<{}>>
-        /\ pc = [self \in ProcSet |-> "Start"]
+        /\ miner_rounds = [miner \in miners |-> 2]
+        /\ leaders = <<{<<CHOOSE miner \in miners: TRUE, {}>>}, {}>>
+        /\ pc = [self \in ProcSet |-> CASE self \in miners -> "Start"
+                                        [] self = "ticker" -> "Tick"]
 
 Start(self) == /\ pc[self] = "Start"
-               /\ miner_rounds[self] <= Min(Range(miner_rounds))
-               /\ IF Scratch(self)
-                     THEN /\ leaders' = <<Head(leaders) \union {self}>> \o Tail(leaders)
-                     ELSE /\ TRUE
-                          /\ UNCHANGED leaders
-               /\ pc' = [pc EXCEPT ![self] = "Tick"]
-               /\ UNCHANGED << NumMiners, miners, MaxRounds, MaxLeaders, 
-                               rounds, miner_rounds >>
+               /\ /\ miner_rounds[self] = Min(Range(miner_rounds))
+                  /\ Len(leaders) >= miner_rounds[self] - 1
+               /\ IF miner_rounds[self] >= MaxRounds
+                     THEN /\ pc' = [pc EXCEPT ![self] = "Done"]
+                     ELSE /\ pc' = [pc EXCEPT ![self] = "Elect"]
+               /\ UNCHANGED << miner_rounds, leaders >>
 
-Tick(self) == /\ pc[self] = "Tick"
-              /\ miner_rounds' = [miner_rounds EXCEPT ![self] = miner_rounds[self] + 1]
-              /\ IF \A miner \in miners: miner_rounds'[miner] = Min(Range(miner_rounds'))
-                    THEN /\ leaders' = <<{}>> \o leaders
-                    ELSE /\ TRUE
-                         /\ UNCHANGED leaders
-              /\ pc' = [pc EXCEPT ![self] = "Start"]
-              /\ UNCHANGED << NumMiners, miners, MaxRounds, MaxLeaders, rounds >>
+Elect(self) == /\ pc[self] = "Elect"
+               /\ LET current_leaders == leaders[miner_rounds[self] - 1] IN
+                    IF current_leaders = {}
+                       THEN /\ leaders' = [leaders EXCEPT ![Len(leaders)] = leaders[Len(leaders)] \union {<<self, {}>>}]
+                            /\ TRUE
+                       ELSE /\ \E tipset \in SUBSET {x[1] : x \in current_leaders }:
+                                 IF USE_RANDOM
+                                    THEN /\ IF Scratch(self, tipset)
+                                               THEN /\ leaders' = [leaders EXCEPT ![Len(leaders)] = leaders[Len(leaders)] \union {<<self, tipset>>}]
+                                               ELSE /\ TRUE
+                                                    /\ UNCHANGED leaders
+                                    ELSE /\ \E scratched \in BOOLEAN:
+                                              IF scratched
+                                                 THEN /\ leaders' = [leaders EXCEPT ![Len(leaders)] = leaders[Len(leaders)] \union {<<self, tipset>>}]
+                                                 ELSE /\ TRUE
+                                                      /\ UNCHANGED leaders
+               /\ miner_rounds' = [miner_rounds EXCEPT ![self] = miner_rounds[self] + 1]
+               /\ pc' = [pc EXCEPT ![self] = "Start"]
 
-miner(self) == Start(self) \/ Tick(self)
+miner(self) == Start(self) \/ Elect(self)
 
-Next == (\E self \in miners: miner(self))
+Tick == /\ pc["ticker"] = "Tick"
+        /\ \A m \in miners: miner_rounds[m] = Min(Range(miner_rounds))
+        /\ leaders' = Append(leaders, {})
+        /\ pc' = [pc EXCEPT !["ticker"] = "Tick"]
+        /\ UNCHANGED miner_rounds
+
+ticker == Tick
+
+Next == ticker
+           \/ (\E self \in miners: miner(self))
            \/ (* Disjunct to prevent deadlock on termination *)
               ((\A self \in ProcSet: pc[self] = "Done") /\ UNCHANGED vars)
 
-Spec == Init /\ [][Next]_vars
+Spec == /\ Init /\ [][Next]_vars
+        /\ \A self \in miners : WF_vars(miner(self))
+        /\ WF_vars(ticker)
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
 \* END TRANSLATION
+
+\* Liveness == []<>(Len(leaders) <  5)
 =============================================================================
-\* Modification History
-\* Last modified Tue Apr 23 17:17:30 PDT 2019 by porcuquine
-\* Created Mon Apr 22 20:51:05 PDT 2019 by porcuquine
