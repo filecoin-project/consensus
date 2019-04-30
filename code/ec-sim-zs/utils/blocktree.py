@@ -1,5 +1,6 @@
 import json
 import pdb
+from collections import defaultdict
 
 # Parse a block tree from json
 class BlockTree:
@@ -99,18 +100,22 @@ class BlockTree:
     # NumReorgs returns the number of times that the heaviest tipset in round
     # n was on a different parent than the heaviest tipset at round n - 1.
     def NumReorgs(self):
-        count = 0
+        # maps length of head to number of times it led to a reorg
+        # reorgs[curHeadLen]-># of reorgs
+        reorgs = defaultdict(int)
+        # length of current head
+        curHeadLen = 1
         # start with genesis
         prevHead = self.headAtHeight(0)
         curHeight = 0
         print "curH: {curH}, chainH: {chainH}".format(curH=curHeight, chainH=len(self.BlocksByHeight))
         # traverse chain
         while curHeight < len(self.BlocksByHeight):
-            print "at h: {h}".format(h=curHeight)
             curHeight += 1
             curHead = self.headAtHeight(curHeight)
             # This round the head is a null block
             if curHead == []:
+                curHeadLen += 1
                 continue
             # Found a non-null head
             else:
@@ -119,14 +124,16 @@ class BlockTree:
                 parentNonces = self.nonNullParentNonces(curHead)
                 prevNonces = [ block["nonce"] for block in prevHead]
                 if set(parentNonces) != set(prevNonces):
-                    count += 1
+                    reorgs[curHeadLen] += 1
+                    # reset curHeadLen
+                    curHeadLen = 1
+                else:
+                    curHeadLen += 1
                 prevHead = curHead
-                print "At height {h}:\n\ncurHead:{cur}\n\nprevHead: {prev}\n\ncount: {count}\n*_*_*_*_*_*_*_*_*\n".format(h=curHeight, cur=curHead, prev=prevHead, count=count)
-        return count
+        return reorgs
 
     # Return the first non null parent nonces of input tipset child
     def nonNullParentNonces(self, child):
-        print "HIHIHI {ca}".format(ca=child)
         childBlock = child[0] # all tipset blocks have the same parent so use one
         while True:
             nonces = parentNonces(childBlock["tipset"]["name"])

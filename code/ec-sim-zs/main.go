@@ -486,7 +486,6 @@ func writeChain(ct *chainTracker, name string, outputDir string) {
 	fmt.Printf(fmt.Sprintf("Writing Out %s\n", name))
 
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		fmt.Printf("HERE")
 		err2 := os.MkdirAll(outputDir, 0755)
 		if err2 != nil {
 			panic(err2)
