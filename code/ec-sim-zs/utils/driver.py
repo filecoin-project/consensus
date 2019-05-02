@@ -92,10 +92,10 @@ def pickTrial(trials):
 # Creates a histogram
 def plotLenReorgs(data, metric, rounds):
     # overloading that one data name
-    colorIndex = 0
     metric = "NumReorgs"
     lbps = sorted([lbp for lbp in data])
     for lbp in lbps:
+        colorIndex = 0
         filteredTrials = defaultdict(int)
         keys = []
         minerNums = sorted([m for m in data[lbp]])
@@ -106,24 +106,24 @@ def plotLenReorgs(data, metric, rounds):
             filteredTrials[m] = trial
             keys += trial.keys()
         # now we can set up our data
-        keys = list(set(keys))
+        keys = sorted(list(set(keys)))
         for k in keys:
             trials[k] = [filteredTrials[m][k] for m in minerNums]
         # let's do it
         ind = np.arange(len(minerNums))
         width = .3
+        bottoms = [0] * len(minerNums)
         for i, k in enumerate(keys):
-            if i == 0:
-                plt.bar(ind, trials[k], width, color=COLORS[colorIndex])
-            else:
-                plt.bar(ind, trials[k], width, bottom=trials[keys[i-1]], color=COLORS[colorIndex])
+            plt.bar(ind, tuple(trials[k]), width, bottom=bottoms, color=COLORS[colorIndex])
             colorIndex += 1
             colorIndex %= len(COLORS)
+            # increment y index across the bars.
+            bottoms = [sum(tup) for tup in zip(bottoms, trials[k])]
         plt.xlabel("Number of miners")
         plt.ylabel("Number of reorgs")
         plt.xticks(ind, minerNums)
         plt.legend(["lenReorg="+str(k) for k in keys], loc='best')
-        plt.title("reorgs split by chain size")
+        plt.title("reorgs split by chain size, for lbp={k}".format(k=lbp))
         fig1 = plt.gcf()
         fig1.savefig("{metric}-k{k}-{rounds}rds-{time}.png".format(metric=metric, rounds=rounds, k=lbp,time=milliTS()), format="png")
         plt.clf()

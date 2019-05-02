@@ -124,7 +124,7 @@ class BlockTree:
                 parentNonces = self.nonNullParentNonces(curHead)
                 prevNonces = [ block["nonce"] for block in prevHead]
                 if set(parentNonces) != set(prevNonces):
-                    reorgs[curHeadLen] += 1
+                    reorgs[findBucket(curHeadLen)] += 1
                     # reset curHeadLen
                     curHeadLen = 1
                 else:
@@ -199,4 +199,11 @@ def parentNonces(name):
     nonces = name.split('-')
     return [int(nonce) for nonce in nonces]
 
+
+# 5000 is a max more or less
+LENGTHS = [1, 2, 5, 10, 25, 50, 100, 250, 5000]
+def findBucket(forkLen):
+    for idx, elem in enumerate(LENGTHS):
+        if elem > forkLen:
+            return elem
 
