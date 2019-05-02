@@ -7,6 +7,9 @@ import os
 from os import listdir
 from os.path import isfile, join
 import sys
+import numpy as np
+import pdb
+from collections import defaultdict
 
 # simulation output parser 
 import blocktree
@@ -16,6 +19,8 @@ import matplotlib
 # use different backend ahead of importing pyplot for running remotely
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+COLORS = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
 PROGRAM = "./ec-sim-zs"
 
@@ -70,56 +75,109 @@ def readSweepData(miners, lbps, metrics, sweepDir):
                 print "\ntime is {time}".format(time=datetime.datetime.now())
                 for metric in metrics:
                     if metric == "AvgHeadsPerRound":
-                        data[lbp][m][metric].append(tree.AvgHeadsPerRound())
-                        print "average heads per round was {avg}".format(avg= Tree.AvgHeadsPerRound())
+                        avgHeads = tree.AvgHeadsPerRound()
+                        data[lbp][m][metric].append(avgHeads)
+                        print "average heads per round was {avg}".format(avg=avgHeads)
                     if metric == "NumReorgs":
-                        data[lbp][m][metric].append(tree.NumReorgs())
-                        print "num reorgs was {reorgs}".format(reorgs=tree.NumReorgs())
+                        reorgs = tree.NumReorgs()
+                        data[lbp][m][metric].append(reorgs)
+                        print "num reorgs was {reorgs}".format(reorgs=sum(reorgs.values()))
     return data
 
-# plotMetricSweep plots the mean value of a metric varying over the number of miners
-# mining on the chain.  It plots multiple series, one for each lbp value in the
-# sweep.
-def plotMetricSweep(data, metric, sweepDir):
+def pickTrial(trials):
+    # return the run that spawned the median amount of reorgs
+    num = [sum(dic.values()) for dic in trials]
+    return trials[np.argsort(num)[len(num)//2]]
+
+# Creates a histogram
+def plotLenReorgs(data, metric, rounds):
+    # overloading that one data name
+    metric = "NumReorgs"
     lbps = sorted([lbp for lbp in data])
     for lbp in lbps:
-        series = []
+        colorIndex = 0
+        filteredTrials = defaultdict(int)
+        keys = []
         minerNums = sorted([m for m in data[lbp]])
+        trials = defaultdict(int)
         for m in minerNums:
-            trialValues = data[lbp][m][metric]
-            series.append(sum(trialValues) / len(trialValues))
-        plt.plot(minerNums, series, 'x-')
-    plt.xlabel("Number of miners")
-    plt.ylabel(metric)
-    plt.legend(["k="+str(lbp) for lbp in sorted(lbps)] , loc='upper right')
-    plt.title(metric + " varied over miner number and lookback parameter k")
-    fig1 = plt.gcf()
-    fig1.savefig("{name}-{time}.png".format(name=sweepDir,time=milliTS()), format="png")
-    plt.show()
-        
-                
+            # let's only take one trial, and get all the keys we need first
+            trial = pickTrial(data[lbp][m][metric])
+            filteredTrials[m] = trial
+            keys += trial.keys()
+        # now we can set up our data
+        keys = sorted(list(set(keys)))
+        for k in keys:
+            trials[k] = [filteredTrials[m][k] for m in minerNums]
+        # let's do it
+        ind = np.arange(len(minerNums))
+        width = .3
+        bottoms = [0] * len(minerNums)
+        for i, k in enumerate(keys):
+            plt.bar(ind, tuple(trials[k]), width, bottom=bottoms, color=COLORS[colorIndex])
+            colorIndex += 1
+            colorIndex %= len(COLORS)
+            # increment y index across the bars.
+            bottoms = [sum(tup) for tup in zip(bottoms, trials[k])]
+        plt.xlabel("Number of miners")
+        plt.ylabel("Number of reorgs")
+        plt.xticks(ind, minerNums)
+        plt.legend(["lenReorg="+str(k) for k in keys], loc='best')
+        plt.title("reorgs split by chain size, for lbp={k}".format(k=lbp))
+        fig1 = plt.gcf()
+        fig1.savefig("{metric}-k{k}-{rounds}rds-{time}.png".format(metric=metric, rounds=rounds, k=lbp,time=milliTS()), format="png")
+        plt.clf()
+
+# plotSeries plots the mean value of a metric varying over the number of miners
+# mining on the chain.  It plots multiple series, one for each lbp value in the
+# sweep.
+def plotSeries(data, metric, rounds):
+    if metric == "AvgHeadsPerRound" or metric == "NumReorgs":
+        lbps = sorted([lbp for lbp in data])
+        for lbp in lbps:
+            series = []
+            minerNums = sorted([m for m in data[lbp]])
+            for m in minerNums:
+                trialValues = data[lbp][m][metric]
+                if metric == "AvgHeadsPerRound":
+                    series.append(sum(trialValues) / len(trialValues))
+                if metric == "NumReorgs":
+                    num = [sum(dic.values()) for dic in trialValues]
+                    series.append(sum(num) / len(num))
+            plt.plot(minerNums, series, 'x-')
+        plt.xlabel("Number of miners")
+        plt.ylabel(metric)
+        plt.legend(["k="+str(lbp) for lbp in sorted(lbps)] , loc='upper right')
+        plt.title(metric + " varied over miner number and lookback parameter k")
+        fig1 = plt.gcf()
+        fig1.savefig("{metric}-{rounds}rds-{time}.png".format(metric=metric,rounds=rounds,time=milliTS()), format="png")
+        plt.clf()
+
 # plot value of chain metrics through a sweep of miner number and lookback
 # parameters.  metrics is a list of strings, each corresponding to a metric
 # identifier.
-def plotSweep(miners, lbps, metrics, sweepDir):
+def plotSweep(miners, lbps, metrics, sweepDir, rounds):
     # Gather data from sweep output artifacts.
     data = readSweepData(miners, lbps, metrics, sweepDir)
 
     # Plot data for each metric
     for metric in metrics:
-        plotMetricSweep(data, metric, sweepDir)
+        if metric == "AvgHeadsPerRound" or metric == "NumReorgs":
+            plotSeries(data, metric, rounds)
+        if metric == "LenReorgs":
+            plotLenReorgs(data, metric, rounds)
                 
 def milliTS():
     return int(round(time.time() * 1000))
 
 if __name__ == "__main__":
     # TODO -- should use argparse to set values of these slices or read from config file
-    miners = [10, 50, 100, 200, 400]
-    lbps = [1, 10, 20, 50, 100]
+    miners = [10, 20]#50, 100, 200, 400]
+    lbps = [1, 10]#, 20, 50, 100]
     trials = 3
-    rounds = 500
-    sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
-
+    rounds = 200
+    # sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
+    sweepDir = "./output/sweep-f"
 
     # TODO -- shoulduse argparse to express which operations should be done:
     #   run simulation and output (sweepByMinersAndLBP), plot existing data 
@@ -145,5 +203,4 @@ if __name__ == "__main__":
     )
 
     # sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
-    readSweepData(miners, lbps, ["NumReorgs"], sweepDir)
-    plotSweep(miners, lbps, ["NumReorgs"], sweepDir)
+    plotSweep(miners, lbps, ["NumReorgs", "LenReorgs"], sweepDir, rounds)
