@@ -229,7 +229,7 @@ for q in qs:
     EC_avg = np.average(lengths)
     nohs_avg = np.average(lengths_nohs)
     nots_avg = np.average(lengths_nots)
-    print "Attacker power q: {q}%, num of rounds: {height}, num of sims: {sims}".format(q=q*100, sims=sim, height=height)
+    print "Attacker power q: {q}%, num of rounds: {height}, num of sims: {sims}, lookahead: {la}".format(q=q*100, sims=sim, height=height, la=lookahead)
     print "EC: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=EC_avg, med = np.median(lengths), num=len(lengths), nostart=nostart, noend=noend, launch=np.average(launched_EC))
     print "EC wo Headstart: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=nohs_avg, med = np.median(lengths_nohs), num=len(lengths_nohs), nostart=nostart_nohs, noend=noend_nohs, launch=np.average(launched_nohs))
     print "EC wo TipSet: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=nots_avg, med = np.median(lengths_nots),num=len(lengths_nots), nostart=nostart_nots, noend=noend_nots, launch=np.average(launched_nots))		
