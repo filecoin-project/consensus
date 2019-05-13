@@ -7,7 +7,7 @@ qs=[k/100.0 for k in range(2, 54, 2)]
 # na=52
 ntot=10000
 sim=10000
-heights = [5 ,15    ,  25  ,    35   ,   45   ,   55   ,   65   ,   75    ,  85   ,   95]
+heights = range(5,105,10)
 blocks_back = range(5,105, 10)
 d={}
 height_max=95
@@ -34,14 +34,11 @@ for q in qs:
 			w_h = sum(ch[:height])
 			wpraos_h = sum(praosh[:height])
 			wpraos_a = sum(praosa[:height])
-			w_without_tipset_a = sum(ca[:height])
-			w_without_tipset_h = sum(ch[:height])
-			if w_a>w_h: success_ec[idx] += 1
-			if w_a==w_h: success_ec[idx] += 0.5
-			if wpraos_a>wpraos_h: success_praos[idx] += 1
-			if wpraos_a==wpraos_h: success_praos[idx] += 0.5
-			if w_without_tipset_a>w_without_tipset_h: success_ec_without[idx] += 1
-			if w_without_tipset_a==w_without_tipset_h: success_ec_without[idx] += 0.5
+			w_without_headstart_a = sum(ca[:height])
+			w_without_headstart_h = sum(ch[:height])
+			if w_a>=w_h: success_ec[idx] += 1
+			if wpraos_a>=wpraos_h: success_praos[idx] += 1
+			if w_without_headstart_a>w_without_headstart_h: success_ec_without[idx] += 1
 
 	success_ec_tot.append([i/float(sim) for i in success_ec])
 	success_praos_tot.append([i/float(sim) for i in success_praos])
