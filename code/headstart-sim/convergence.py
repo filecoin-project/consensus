@@ -96,8 +96,8 @@ for q in qs:
     	end = -1
     	wt_at_start = -1
     	for idx, j in enumerate(ca):
-            # start attack	
-            if j>0 and start < 0:
+            # start attack and with no headstart must make sure the other did not win more.	
+            if j > 0 and start < 0 and ca[idx] >= ch[idx]:
                 w_h = ch[idx]
     		# no headstart
     		w_a = j
@@ -133,6 +133,7 @@ for q in qs:
     	start = -1
     	wt_at_start = -1
     	for idx, j in enumerate(praosa):
+            # in this case no need to check if other won: you'll be tied at worst, ie start attack anyways.
     	    if j  > 0 and start < 0:
                 wpraos_h = praosh[idx]
     		wpraos_a = praosa[idx]
