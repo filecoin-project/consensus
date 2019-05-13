@@ -10,11 +10,35 @@ def confidence_of_k(target, array):
             _sum += 1
     # attack succeeds
     return float(len(array) - _sum) / len(array) 
-    
-# qs=[k/100.0 for k in range(2, 54, 2)]
-qs=[k/100.0 for k in range(36, 54, 2)]
+
+# because of EC's lookback param, adversary can effectively look ahead that many blocks to decide whether to release
+# when honest party catches up: is this a real "catch up" or a temporary one?
+def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversarial_chain, lookahead):
+    assert(len(honest_chain) == len(adversarial_chain))
+
+    if adversarial_weight > honest_weight:
+        return False
+
+    # if we're getting to end of sim, let's not look beyond the end.
+    if len(honest_chain) < lookahead:
+        lookahead = len(honest_chain)
+
+    # If we are not, let's look ahead to make a choice
+    for i in range(lookahead):
+        honest_weight += honest_chain[i]
+        adversarial_weight += adversarial_chain[i]
+        # if at some point in the next lookahead blocks adversary takes over again, cancel the release and wait it out
+        if adversarial_weight > honest_weight:
+            return False
+    # adversary can't take the risk of never getting back on top. Stop the attack.
+    return True
+
+lookahead = 1
+qs=[k/100.0 for k in range(2, 54, 2)]
+# qs=[k/100.0 for k in range(36, 54, 2)]
 # qs = [.49]
-blocks_back = range(5, 5250, 250)
+#blocks_back = range(5, 5250, 250)
+blocks_back = range(5, 105, 5)
 success_ec = []
 success_ec_nohs = []
 success_ec_nots = []
@@ -75,7 +99,7 @@ for q in qs:
     	    	if w_h == w_a:
                     wt_at_start = w_h
     	    # end attack
-    	    elif start >= 0 and w_h >= w_a and (wt_at_start < 0 or wt_at_start != w_h):
+            elif start >= 0 and should_end_attack(w_h, w_a, ca[idx+1:], ch[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
                 # compare to current longest successful attack in this sim.
                 if end - start > maxLen:
@@ -123,8 +147,8 @@ for q in qs:
     		# only occurs without headstart
     		if w_h == w_a:
                     wt_at_start = w_h
-            # end attack
-            elif start >= 0 and w_h >= w_a and (wt_at_start < 0 or wt_at_start != w_h):
+            # end attac
+            elif start >= 0 and should_end_attack(w_h, w_a, ca[idx+1:], ch[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
                 # compare to current longest successful attack in this sim.
                 if end - start > maxLen:
@@ -171,7 +195,7 @@ for q in qs:
     		if wpraos_h == wpraos_a:
     			wt_at_start = wpraos_h
     		start = idx
-            elif start >= 0 and wpraos_h >= wpraos_a and (wt_at_start < 0 or wt_at_start != wpraos_h):
+            elif start >= 0 and should_end_attack(wpraos_h, wpraos_a, praosa[idx+1:], praosh[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != wpraos_h):
     		end = idx
 
                 # compare to current longest successful attack in this sim.
