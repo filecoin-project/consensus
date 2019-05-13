@@ -12,8 +12,9 @@ def confidence_of_k(target, array):
     return float(len(array) - _sum) / len(array) 
     
 # qs=[k/100.0 for k in range(2, 54, 2)]
-qs = [.25]
-blocks_back = range(5,105, 10)
+qs=[k/100.0 for k in range(36, 54, 2)]
+# qs = [.49]
+blocks_back = range(5, 5250, 250)
 success_ec = []
 success_ec_nohs = []
 success_ec_nots = []
