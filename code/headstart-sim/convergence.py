@@ -16,6 +16,10 @@ def confidence_of_k(target, array):
 def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversarial_chain, lookahead):
     assert(len(honest_chain) == len(adversarial_chain))
 
+    # no need to lookahead then, let's just compare the weights.
+    if lookahead == 0:
+        return adversarial_weight <= honest_weight
+
     if adversarial_weight > honest_weight:
         return False
 
@@ -33,12 +37,12 @@ def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversari
     # adversary can't take the risk of never getting back on top. Stop the attack.
     return True
 
-lookahead = 1
+lookahead = 10
 qs=[k/100.0 for k in range(2, 54, 2)]
 # qs=[k/100.0 for k in range(36, 54, 2)]
 # qs = [.49]
 #blocks_back = range(5, 5250, 250)
-blocks_back = range(5, 100, 10)
+blocks_back = range(5, 95, 10)
 success_ec = []
 success_ec_nohs = []
 success_ec_nots = []
@@ -99,7 +103,7 @@ for q in qs:
     	    	if w_h == w_a:
                     wt_at_start = w_h
     	    # end attack
-            elif start >= 0 and should_end_attack(w_h, w_a, ca[idx+1:], ch[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
+            elif start >= 0 and should_end_attack(w_h, w_a, ch[idx+1:], ca[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
                 # compare to current longest successful attack in this sim.
                 if end - start > maxLen:
@@ -148,7 +152,7 @@ for q in qs:
     		if w_h == w_a:
                     wt_at_start = w_h
             # end attac
-            elif start >= 0 and should_end_attack(w_h, w_a, ca[idx+1:], ch[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
+            elif start >= 0 and should_end_attack(w_h, w_a, ch[idx+1:], ca[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
                 # compare to current longest successful attack in this sim.
                 if end - start > maxLen:
@@ -195,7 +199,7 @@ for q in qs:
     		if wpraos_h == wpraos_a:
     			wt_at_start = wpraos_h
     		start = idx
-            elif start >= 0 and should_end_attack(wpraos_h, wpraos_a, praosa[idx+1:], praosh[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != wpraos_h):
+            elif start >= 0 and should_end_attack(wpraos_h, wpraos_a, praosh[idx+1:], praosa[idx+1:], lookahead) and (wt_at_start < 0 or wt_at_start != wpraos_h):
     		end = idx
 
                 # compare to current longest successful attack in this sim.
