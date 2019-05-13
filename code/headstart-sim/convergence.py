@@ -37,12 +37,12 @@ def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversari
     # adversary can't take the risk of never getting back on top. Stop the attack.
     return True
 
-lookahead = 10
+lookahead = 0
 qs=[k/100.0 for k in range(2, 54, 2)]
 # qs=[k/100.0 for k in range(36, 54, 2)]
 # qs = [.49]
 #blocks_back = range(5, 5250, 250)
-blocks_back = range(5, 95, 10)
+blocks_back = range(5, 105, 10)
 success_ec = []
 success_ec_nohs = []
 success_ec_nots = []
