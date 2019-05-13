@@ -12,13 +12,13 @@ def confidence_of_k(target, array):
     return float(len(array) - _sum) / len(array) 
     
 # qs=[k/100.0 for k in range(2, 54, 2)]
-qs = [.52]
+qs = [.25]
 blocks_back = range(5,105, 10)
 success_ec = []
 success_ec_nohs = []
 success_ec_nots = []
 ntot=10000
-height=2000
+height=5000
 # equal power for all miners
 p=1./float(1*ntot)
 sim=1000
@@ -30,14 +30,17 @@ for q in qs:
     nostart = 0
     noend = 0
     lengths = []
+    launched_EC = []
     
     nostart_nohs = 0
     noend_nohs = 0
     lengths_nohs = []
+    launched_nohs = []
     
     nostart_nots = 0
     noend_nots = 0
     lengths_nots = []
+    launched_nots = []
     
     for i in range(sim):
         ch = np.random.binomial(nh, p, height)
@@ -53,9 +56,11 @@ for q in qs:
         #####
         w_a = 0
     	w_h = 0
-    	start = -1
+    	start = -2
     	end = -1
     	wt_at_start = -1
+        maxLen = -1
+        EC_num_atk = 0
     	for idx, j in enumerate(ca):
             # start attack	
     	    if j>0 and start < 0:
@@ -71,30 +76,42 @@ for q in qs:
     	    # end attack
     	    elif start >= 0 and w_h >= w_a and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
-    		lengths.append(end-start)
-    		break
+                # compare to current longest successful attack in this sim.
+                if end - start > maxLen:
+                    maxLen = end - start
+    	        # reset to run attack again
+                EC_num_atk += 1
+                start = -1
+                end = -1
             # attack didn't start and sim ends
-            elif start < 0 and idx == height - 1:
+            elif start < -1 and idx == height - 1:
                 nostart += 1
             # attack didn't end and sim ends
     	    elif start >= 0 and end < 0 and idx == height - 1:
                 noend += 1
-	    	# account for max
-    		end = height
-    		lengths.append(end-start)
+                EC_num_atk += 1
+	    	# stop attack here successfully. account for max
+                if height - start > maxLen:
+                    maxLen = height - start
     	    # move forward each step
             else:
                 w_h += ch[idx]
     		w_a += j
+        
+        # at end of sim, append longest
+    	lengths.append(maxLen)
+        launched_EC.append(EC_num_atk)
 
         #####
         ### EC wo headstart
         #####
         w_a = 0
     	w_h = 0
-    	start = -1
+    	start = -2
     	end = -1
     	wt_at_start = -1
+        maxLen = -1
+        nohs_num_atk = 0
     	for idx, j in enumerate(ca):
             # start attack	
             if j>0 and start < 0:
@@ -108,21 +125,31 @@ for q in qs:
             # end attack
             elif start >= 0 and w_h >= w_a and (wt_at_start < 0 or wt_at_start != w_h):
                 end = idx
-           	lengths_nohs.append(end-start)
-           	break
+                # compare to current longest successful attack in this sim.
+                if end - start > maxLen:
+                    maxLen = end - start
+    	        # reset to run again
+                nohs_num_atk += 1
+                start = -1
+                end = -1
             # attack didn't start and sim ends
-            elif start < 0 and idx == height - 1:
+            elif start < -1 and idx == height - 1:
            	nostart_nohs += 1
             # attack didn't end and sim ends
             elif start >= 0 and end < 0 and idx == height - 1:
            	noend_nohs += 1
-           	# account for max
-           	end = height
-           	lengths_nohs.append(end-start)
+                nohs_num_atk += 1
+	    	# stop attack here successfully. account for max
+                if height - start > maxLen:
+                    maxLen = height - start
             # move forward each step
             else:
            	w_h += ch[idx]
            	w_a += j
+
+        # at end of sim, append longest
+    	lengths_nohs.append(maxLen)
+        launched_nohs.append(nohs_num_atk)
 
         #####
         ### EC wo tipset
@@ -130,8 +157,10 @@ for q in qs:
     	wpraos_h = 0
     	wpraos_a = 0
     	end = -1
-    	start = -1
+    	start = -2
     	wt_at_start = -1
+        maxLen = -1
+        nots_num_atk = 0
     	for idx, j in enumerate(praosa):
     	    if j  > 0 and start < 0:
                 wpraos_h = praosh[idx]
@@ -143,27 +172,38 @@ for q in qs:
     		start = idx
             elif start >= 0 and wpraos_h >= wpraos_a and (wt_at_start < 0 or wt_at_start != wpraos_h):
     		end = idx
-    		lengths_nots.append(end-start)
-    		break
-            elif start < 0 and idx == height - 1:
+
+                # compare to current longest successful attack in this sim.
+                if end - start > maxLen:
+                    maxLen = end - start
+    	        # reset to run again
+                nots_num_atk += 1
+                start = -1
+                end = -1
+            elif start < -1 and idx == height - 1:
     		nostart_nots += 1
             elif start >= 0 and end < 0 and idx == height - 1:
     		noend_nots += 1
-    		end = height
-    		lengths_nots.append(end-start)
+                nots_num_atk += 1
+                if height - start > maxLen:
+                    maxLen = height - start
     	    else: 
     		wpraos_h += praosh[idx]
     		wpraos_a += praosa[idx]
     
+        # at end of sim, append longest
+    	lengths_nots.append(maxLen)
+        launched_nots.append(nots_num_atk)
+
     # statement: the median is the distance such that an attacker creates a fork 50% of the time.
     # Q1: how often can the attacker create a fork from the average?
     EC_avg = np.average(lengths)
     nohs_avg = np.average(lengths_nohs)
     nots_avg = np.average(lengths_nots)
-    print "Attacker power q: {q}%".format(q=q*100)
-    print "EC: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}".format(avg=EC_avg, med = np.median(lengths), num=len(lengths), nostart=nostart, noend=noend)
-    print "EC wo Headstart: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}".format(avg=nohs_avg, med = np.median(lengths_nohs), num=len(lengths_nohs), nostart=nostart_nohs, noend=noend_nohs)
-    print "EC wo TipSet: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}".format(avg=nots_avg, med = np.median(lengths_nots),num=len(lengths_nots), nostart=nostart_nots, noend=noend_nots)		
+    print "Attacker power q: {q}%, num of rounds: {height}, num of sims: {sims}".format(q=q*100, sims=sim, height=height)
+    print "EC: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=EC_avg, med = np.median(lengths), num=len(lengths), nostart=nostart, noend=noend, launch=np.average(launched_EC))
+    print "EC wo Headstart: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=nohs_avg, med = np.median(lengths_nohs), num=len(lengths_nohs), nostart=nostart_nohs, noend=noend_nohs, launch=np.average(launched_nohs))
+    print "EC wo TipSet: avg {avg}; med {med}; num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}".format(avg=nots_avg, med = np.median(lengths_nots),num=len(lengths_nots), nostart=nostart_nots, noend=noend_nots, launch=np.average(launched_nots))		
     
     y_ec = []
     y_nohs = []
@@ -194,7 +234,7 @@ for q in qs:
     plt.xlabel("blocks behind")
     plt.ylabel("chance of success")
     plt.title("Confirmation time for q={q}".format(q=q))
-    plt.show()
+    # plt.show()
    #  fig1 = plt.gcf()
    #  fig1.savefig("{q}-confirmationTime.png".format(q=q), format="png")
    #  plt.clf()
