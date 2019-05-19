@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pdb
 
+print "Takes around 25 mins..."
 def confidence_of_k(target, array):
     _sum = 0.0
     for idx, i in enumerate(array):
