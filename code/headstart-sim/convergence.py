@@ -56,7 +56,7 @@ total_qual_nots = []
 ntot=10000
 height=5000
 # equal power for all miners
-p=1./float(1*ntot)
+p=10./float(1*ntot)
 sim=1000
 
 for q in qs:
