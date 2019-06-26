@@ -4,6 +4,7 @@ from scipy.stats import binom
 import numpy as np
 import pandas as pd
 import pdb
+import matplotlib.pyplot as plt
 
 # system wide params
 miners = 1000
@@ -15,8 +16,8 @@ headstart = True
 
 if headstart:
     # random heuristic: let's pick best headstart with likelihood > 1/10k to happen for a 49% attacker,
-    # or x st binom.pmf(x, 490, 1./1000) > 10**-4
-    start = 5
+    # or -x st binom.pmf(x, 490, 1./1000) > 10**-4
+    start = -5
 else:
     start = 0
 
@@ -119,11 +120,16 @@ def atkSuccess(states, endStates):
         _sum += endStates[i]
     return _sum
 
-def getSuccessOverRounds(markovChain, rounds):
-    states = getBoundedStates(markovChain, rounds)
+def getEndStates(markovChain, states, rounds):
     transMatrix = generateTransMatrix(markovChain.transProbs, states)
-    endStates = calcEndStateProbs(states, transMatrix, rounds)
-    return atkSuccess(states, endStates)
+    return calcEndStateProbs(states, transMatrix, rounds)
+
+def plot(endStates, states, alpha, rounds):
+    plt.plot(states, endStates)
+    plt.xlabel("gap between H and A")
+    plt.ylabel("likelihood")
+    plt.title("{m} miners, alpha = {al}, over {rd} rounds".format(m = miners, al=alpha, rd = rounds))
+    plt.show()
 
 alphas = [k/100.0 for k in range(2, 54, 2)]
 roundsBack = range(5, 105, 10)
@@ -135,7 +141,10 @@ for alpha in alphas:
     AtkrSuccess = []
     mc = MarkovChain(alpha)
     for rounds in roundsBack:
-        prob = getSuccessOverRounds(mc, rounds)
+        states = getBoundedStates(mc, rounds)
+        endStates = getEndStates(mc, states, rounds)
+        # plot(endStates, states, alpha, rounds)
+        prob = atkSuccess(states, endStates)
         print "{rounds} rounds back, atkr wins: {win}".format(rounds = rounds, win = prob)
         AtkrSuccess.append(prob)
     successRates.append(AtkrSuccess)
