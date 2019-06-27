@@ -55,7 +55,6 @@ def confidence_of_k(target, array):
 # when honest party catches up: is this a real "catch up" or a temporary one?
 def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversarial_chain, lookahead):
     assert(len(honest_chain) == len(adversarial_chain))
-
     # no need to lookahead then, let's just compare the weights.
     if lookahead == 0:
         return adversarial_weight <= honest_weight
@@ -84,6 +83,10 @@ def should_launch_attack(_type, start, advCount, honCount):
         # for EC, makes sense
         # for NOTS, no need to check either: you'll be tied at worst, just launch attack anyways
         return advCount > 0 and start < 0
+
+def new_wt(old_wt, chain, idx, supp=0):
+    # supp will be added weight for eg headstart
+    return old_wt + chain[idx] + supp
 
 #####
 ## Sim runner
@@ -194,11 +197,11 @@ class MonteCarlo:
         ####
         ## set Params
         ####
-        weight_adv = 0
-        weight_hon = 0
+        atk_weight_adv = 0
+        atk_weight_hon = 0
         # for quality, we are not looking at chains together but rather which has its blocks counted
-        qual_adv = 0
-        qual_hon = 0
+        tot_weight_adv = 0
+        tot_weight_hon = 0
         # flags to detect whether attack is running
         start = -2
         end = -1
@@ -215,30 +218,30 @@ class MonteCarlo:
             # start attack
     	    if should_launch_attack(_type, start, j, chain_hon[idx]):
                 # reset since atkr will compare to this to time end
-                weight_hon = chain_hon[idx]
+                atk_weight_hon = new_wt(0, chain_hon, idx)
                 if _type == Sim.EC:
                     # both will be counted
-                    weight_adv = j + weight_hon
-                    qual_hon += weight_hon
+                    atk_weight_adv = new_wt(0, chain_adv, idx, chain_hon[idx])
+                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx)
                 else:
                     # no headstart
-                    weight_adv = j
+                    atk_weight_adv = new_wt(0, chain_adv, idx)
                 
-                qual_adv += j
+                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
                 
     		start = idx
                 num_atks += 1
                 # flag edge case which occurs for no hs
                 # prevents attack from ending in the next round when both win at start
                 if _type != Sim.EC:
-                    weight_at_start = weight_hon
+                    weight_at_start = atk_weight_hon
 
     	    # end attack
-            elif start >= 0 and should_end_attack(weight_hon, weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], lookahead) and (weight_at_start < 0 or weight_at_start != weight_hon):
+            elif start >= 0 and should_end_attack(atk_weight_hon, atk_weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], lookahead) and (weight_at_start < 0 or weight_at_start != atk_weight_hon):
                 end = idx
                 # attacker is sole winner (note that we assume attacker has better connectivity,
                 # ie will always win in case of equal weighted chains -- this is a worst case)
-                qual_adv += j
+                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
                 # compare to current longest successful attack in this sim.
                 if end - start > max_len:
                     max_len = end - start
@@ -249,29 +252,31 @@ class MonteCarlo:
             # attack didn't start and sim ends
             elif start < -1 and idx == sim_rounds - 1:
                 self.nostart[_type] += 1
-                qual_adv += j
-                qual_hon += chain_hon[idx]
+                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
+                tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx)
 
             # attack didn't end and sim ends
     	    elif start >= 0 and end < 0 and idx == sim_rounds - 1:
                 self.noend[_type] += 1
 	    	# stop attack here successfully. account for max (could have gone on)
-                qual_adv += j
+                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
                 if sim_rounds - start > max_len:
                     max_len = sim_rounds - start
 
     	    # move forward each step
             else:
-                weight_hon += chain_hon[idx]
-    		weight_adv += j
-                qual_hon += chain_hon[idx]
-                qual_adv += j
+                atk_weight_hon = new_wt(atk_weight_hon, chain_hon, idx)
+    		atk_weight_adv = new_wt(atk_weight_adv, chain_adv, idx)
+                # only add to honest weight if not under attack, otherwise honest party's blocks will be invalidated
+                if start < 0:
+                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx) 
+                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx) 
         
         # at end of sim, retain stats
         # longest atk, num launched, adv earnings (qual)
         self.lengths[_type].append(max_len)
         self.launched[_type].append(num_atks)
-        self.quality[_type].append(float(qual_adv)/(qual_hon + qual_adv))
+        self.quality[_type].append(float(tot_weight_adv)/(tot_weight_hon + tot_weight_adv))
 
 mc = MonteCarlo()
 mc.run()
