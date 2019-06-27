@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import pdb
+import math
 
 print "Takes around 25 mins..."
 
@@ -12,7 +13,6 @@ print "Takes around 25 mins..."
 lookahead = 0
 alphas = [k/100.0 for k in range(2, 54, 2)]
 # alphas=[k/100.0 for k in range(36, 54, 2)]
-# alphas = [.49]
 # rounds_back = range(5, 5250, 250)
 rounds_back = range(5, 105, 10)
 total_qual_ec = []
@@ -24,6 +24,18 @@ e_blocks_per_round = 1.
 # equal power for all miners
 p = e_blocks_per_round/float(1*miners)
 num_sims = 1000
+
+## Model complex weighting fn? Based on observable wt fn params
+wt_fn = False
+# wt_fn = False
+powerAtStart = 5000 # in PBs
+powerIncreasePerDay = .001 #.1% per day, or 5000 TBs a day at start
+# assuming a 30 sec block time and uniform increase
+RDS_PER_DAY = 86400./30
+powerIncreasePerRound = powerIncreasePerDay/RDS_PER_DAY
+wPunishFactor = .896
+wStartPunish = 4
+wBlocksFactor = 1.4281
 
 #####
 ## Helper fns
@@ -84,9 +96,17 @@ def should_launch_attack(_type, start, advCount, honCount):
         # for NOTS, no need to check either: you'll be tied at worst, just launch attack anyways
         return advCount > 0 and start < 0
 
-def new_wt(old_wt, chain, idx, supp=0):
+def new_wt(old_wt, numBlocks, power, nulls, supp=0):
     # supp will be added weight for eg headstart
-    return old_wt + chain[idx] + supp
+    if wt_fn:
+        # edge cases at beg of chain + actual condition, skip last one
+        if nulls >= wStartPunish:
+            wNullFactor = wPunishFactor ** nulls
+        else:
+            wNullFactor = 1.
+        return old_wt + wNullFactor*(math.log10(power) + wBlocksFactor*(numBlocks + supp))
+    else:
+        return old_wt + numBlocks + supp
 
 #####
 ## Sim runner
@@ -209,25 +229,35 @@ class MonteCarlo:
         # stats
         max_len = -1
         num_atks = 0
-       
+        # wt_fn
+        power = powerAtStart
+        adv_nulls = 0
+        hon_nulls = 0
+
         ####
         ## Actual sim
         ####
     	for idx, j in enumerate(chain_adv):
             
+            # track nulls across chains
+            if wt_fn:
+                hon_nulls = hon_nulls + 1 if chain_hon[idx] == 0 else  0
+                adv_nulls = adv_nulls + 1 if j == 0 else 0
+                power += powerIncreasePerRound
+            
             # start attack
     	    if should_launch_attack(_type, start, j, chain_hon[idx]):
                 # reset since atkr will compare to this to time end
-                atk_weight_hon = new_wt(0, chain_hon, idx)
+                atk_weight_hon = new_wt(0, chain_hon[idx], power, hon_nulls)
                 if _type == Sim.EC:
                     # both will be counted
-                    atk_weight_adv = new_wt(0, chain_adv, idx, chain_hon[idx])
-                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx)
+                    atk_weight_adv = new_wt(0, j, power, adv_nulls, chain_hon[idx])
+                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls)
                 else:
                     # no headstart
-                    atk_weight_adv = new_wt(0, chain_adv, idx)
+                    atk_weight_adv = new_wt(0, j, power, adv_nulls)
                 
-                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
+                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
                 
     		start = idx
                 num_atks += 1
@@ -241,7 +271,7 @@ class MonteCarlo:
                 end = idx
                 # attacker is sole winner (note that we assume attacker has better connectivity,
                 # ie will always win in case of equal weighted chains -- this is a worst case)
-                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
+                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
                 # compare to current longest successful attack in this sim.
                 if end - start > max_len:
                     max_len = end - start
@@ -252,25 +282,25 @@ class MonteCarlo:
             # attack didn't start and sim ends
             elif start < -1 and idx == sim_rounds - 1:
                 self.nostart[_type] += 1
-                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
-                tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx)
+                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
+                tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls)
 
             # attack didn't end and sim ends
     	    elif start >= 0 and end < 0 and idx == sim_rounds - 1:
                 self.noend[_type] += 1
 	    	# stop attack here successfully. account for max (could have gone on)
-                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx)
+                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
                 if sim_rounds - start > max_len:
                     max_len = sim_rounds - start
 
     	    # move forward each step
             else:
-                atk_weight_hon = new_wt(atk_weight_hon, chain_hon, idx)
-    		atk_weight_adv = new_wt(atk_weight_adv, chain_adv, idx)
+                atk_weight_hon = new_wt(atk_weight_hon, chain_hon[idx], power, hon_nulls)
+    		atk_weight_adv = new_wt(atk_weight_adv, j, power, adv_nulls)
                 # only add to honest weight if not under attack, otherwise honest party's blocks will be invalidated
                 if start < 0:
-                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon, idx) 
-                tot_weight_adv = new_wt(tot_weight_adv, chain_adv, idx) 
+                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls) 
+                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls) 
         
         # at end of sim, retain stats
         # longest atk, num launched, adv earnings (qual)
