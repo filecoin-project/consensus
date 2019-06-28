@@ -1,17 +1,19 @@
-import numpy as np 
+import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import pdb
 import math
+import json
+import calendar
+import time
 
 print "Takes around 25 mins..."
-
+store_output = False
 #####
 ## System level params
 #####
-
 lookahead = 0
-alphas = [k/100.0 for k in range(2, 54, 2)]
+alphas = [k/100.0 for k in range(2, 52, 2)]
 # alphas=[k/100.0 for k in range(36, 54, 2)]
 # rounds_back = range(5, 5250, 250)
 rounds_back = range(5, 105, 10)
@@ -27,7 +29,7 @@ num_sims = 1000
 
 ## Model complex weighting fn? Based on observable wt fn params
 wt_fn = False
-# wt_fn = False
+# wt_fn = True
 powerAtStart = 5000 # in PBs
 powerIncreasePerDay = .001 #.1% per day, or 5000 TBs a day at start
 # assuming a 30 sec block time and uniform increase
@@ -108,6 +110,36 @@ def new_wt(old_wt, numBlocks, power, nulls, supp=0):
     else:
         return old_wt + numBlocks + supp
 
+def store_output(succ_atk, total_qual):
+    params = {}
+    params["lookahead"] = lookahead
+    params["alphas"] = alphas
+    params["rounds_back"] = rounds_back
+    params["miners"] = miners
+    params["sim_rounds"] = sim_rounds
+    params["e_blocks_per_round"] = e_blocks_per_round
+    params["num_sims"] = num_sims
+    params["wt_fn"] = {
+            "enabled": wt_fn,
+            "powerAtStart": powerAtStart,
+            "powerIncreasePerRound": powerIncreasePerRound,
+            "wPunishFactor": wPunishFactor,
+            "wStartPunish": wStartPunish,
+            "wBlocksFactor": wBlocksFactor
+            }
+  
+    output = {}
+    for el in sim_to_run:
+        output[Sim.rev[el]] = {
+                "conv": [{"alpha": alpha, "result": [{"rounds_back": k, "prob": prob} for k, prob in zip(rounds_back, succ_atk[el][idx])]} for idx, alpha in enumerate(alphas)],
+                "qual": [{"alpha": alpha, "qual": qual} for alpha, qual in zip(alphas, total_qual[el])]
+                }
+
+    outputDoc = "./monte/sim_results_{wt}_{lookahead}_{ts}.json".format(wt=wt_fn, lookahead=lookahead, ts=calendar.timegm(time.gmtime()))
+    _json = {"params": params, "output": output}
+    with open(outputDoc, 'w') as f:
+        json.dump(_json, f, indent=4)
+
 #####
 ## Sim runner
 #####
@@ -157,6 +189,9 @@ class MonteCarlo:
             print Sim.rev[el]
             df = pd.DataFrame(self.total_qual[el], index=alphas)
             print df
+
+        if store_output:
+            store_output(self.succ_atk, self.total_qual)
 
     def aggr_alpha_stats(self, alpha):
 
