@@ -31,7 +31,7 @@ num_sims = 1000
 wt_fn = False
 # wt_fn = True
 powerAtStart = 5000 # in PBs
-powerIncreasePerDay = .001 #.1% per day, or 5000 TBs a day at start
+powerIncreasePerDay = .025 # 2.5% per day for double power in 28 days (1,250 TB a day)
 # assuming a 30 sec block time and uniform increase
 RDS_PER_DAY = 86400./30
 powerIncreasePerRound = powerIncreasePerDay/RDS_PER_DAY
