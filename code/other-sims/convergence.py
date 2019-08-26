@@ -8,13 +8,14 @@ import calendar
 import time
 
 print "Takes around 25 mins..."
+# only set to True if running for a single expected_blocks_per_round
 store_output = False
 #####
 ## System level params
 #####
 lookahead = 0
 # alphas = [k/100.0 for k in range(2, 52, 2)]
-alphas=[.1, .3, .49]
+alphas=[.3]
 rounds_back = []
 # rounds_back = range(5, 105, 10)
 total_qual_ec = []
@@ -22,12 +23,10 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round = 1.
-# equal power for all miners
-p = e_blocks_per_round/float(1*miners)
+e_blocks_per_round = [1., 2.]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
-target_conf = [.01, .001, .0001]
+target_conf = [.0001]
 
 ## Model complex weighting fn? Based on observable wt fn params
 wt_fn = False
@@ -148,6 +147,9 @@ def store_output(succ_atk, total_qual):
 
 class MonteCarlo:
     def __init__(self):
+        self.reset_top_level()
+
+    def reset_top_level(self):
         # What portion of block will adversary publish?
         self.total_qual = {k: [] for k in sim_to_run}
         # type -> alpha -> blocksback -> int
@@ -165,14 +167,20 @@ class MonteCarlo:
 
 
     def run(self):
-        for alpha in alphas:
-            self.reset_sim()
-            for i in range(num_sims): 
-                for sim in sim_to_run:
-                    self.run_sim(sim, alpha)
-            
-            self.aggr_alpha_stats(alpha)
-        self.output_full_stats()
+        for e in e_blocks_per_round:
+            self.reset_top_level()
+
+            # equal sized miners: worst case
+            self.p = e/float(1*miners)
+
+            for alpha in alphas:
+                self.reset_sim()
+                for i in range(num_sims): 
+                    for sim in sim_to_run:
+                        self.run_sim(sim, alpha)
+
+                self.aggr_alpha_stats(alpha, e)
+            self.output_full_stats()
 
     def output_full_stats(self):
         ### Prettify for output
@@ -195,9 +203,9 @@ class MonteCarlo:
         if store_output:
             store_output(self.succ_atk, self.total_qual)
 
-    def aggr_alpha_stats(self, alpha):
+    def aggr_alpha_stats(self, alpha, e):
 
-        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}".format(alpha=alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=lookahead)
+        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}, expected blocks per round: {e}".format(alpha=alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=lookahead, e=e)
         
         # statement: the median is the distance such that an attacker creates a fork 50% of the time.
         # Q1: how often can the attacker create a fork from the average?
@@ -246,8 +254,8 @@ class MonteCarlo:
     	# put another way, it represents choice between longest honest and longest adv, and not between longest honests
         hon_miners = round((1-alpha)*miners)
         adv_miners = round(alpha*miners)
-        ch = np.random.binomial(hon_miners, p, sim_rounds)
-    	ca = np.random.binomial(adv_miners, p, sim_rounds)
+        ch = np.random.binomial(hon_miners, self.p, sim_rounds)
+    	ca = np.random.binomial(adv_miners, self.p, sim_rounds)
         if _type == Sim.NOTS:
     	    chain_hon = [1 if ch[i]>0 else 0 for i in range(len(ch))]
     	    chain_adv = [1 if ca[i]>0 else 0 for i in range(len(ca))]
