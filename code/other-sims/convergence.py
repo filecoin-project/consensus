@@ -13,10 +13,10 @@ store_output = False
 ## System level params
 #####
 lookahead = 0
-alphas = [k/100.0 for k in range(2, 52, 2)]
-# alphas=[k/100.0 for k in range(36, 54, 2)]
-# rounds_back = range(5, 5250, 250)
-rounds_back = range(5, 105, 10)
+# alphas = [k/100.0 for k in range(2, 52, 2)]
+alphas=[.1, .3, .49]
+rounds_back = []
+# rounds_back = range(5, 105, 10)
 total_qual_ec = []
 total_qual_nohs = []
 total_qual_nots = []
@@ -25,7 +25,9 @@ sim_rounds = 5000
 e_blocks_per_round = 1.
 # equal power for all miners
 p = e_blocks_per_round/float(1*miners)
-num_sims = 1000
+num_sims = 10000
+# conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
+target_conf = [.01, .001, .0001]
 
 ## Model complex weighting fn? Based on observable wt fn params
 wt_fn = False
@@ -53,8 +55,8 @@ def enum(*sequential, **named):
 
 Sim = enum('EC', 'NOHS', 'NOTS')
 ## What to run
-# sim_to_run = [Sim.EC]
-sim_to_run = [Sim.EC, Sim.NOHS, Sim.NOTS]
+sim_to_run = [Sim.EC]
+# sim_to_run = [Sim.EC, Sim.NOHS, Sim.NOTS]
 
 def confidence_of_k(target, array):
     _sum = 0.0
@@ -212,8 +214,12 @@ class MonteCarlo:
             avg_qual = np.average(self.quality[el])
             med_qual = np.median(self.quality[el])
             print "{_type}: num of attacks {num}; num didn't start {nostart}, didn't end {noend}, launched on avg: {launch}\n\tconv: avg {avg}; med {med}; \n\tqual: avg {avg_qual}; med {med_qual}".format(_type=_type, avg=avg, med = med, num = num, nostart = nostart, noend = noend, launch = launch, avg_qual = avg_qual, med_qual = med_qual)
-            
-            # how far back before we can be confident there is no ongoing attack?
+           
+            # how far back in order for us to reach target confidence?
+            for conf in target_conf:
+                rounds = np.percentile(self.lengths[el], (1-conf)*100)
+                print "{_type}:            {rounds_back} rounds back, atk success is {targ}".format(_type=_type, rounds_back=rounds, targ=conf)
+            # what is confidence at various ranges?
             for lookback in rounds_back:
         	likelihood = confidence_of_k(lookback, self.lengths[el])
        	        print "{_type}:              k {avg} will succeed {num}".format(_type=_type, avg=lookback, num=likelihood)
