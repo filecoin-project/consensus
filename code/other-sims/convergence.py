@@ -23,7 +23,7 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round = [x for x in range(10)]
+e_blocks_per_round = [x + 1 for x in range(10)]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
