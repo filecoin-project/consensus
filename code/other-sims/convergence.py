@@ -23,7 +23,7 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round = [1., 2.]
+e_blocks_per_round = [x for x in range(10)]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
@@ -111,7 +111,7 @@ def new_wt(old_wt, numBlocks, power, nulls, supp=0):
     else:
         return old_wt + numBlocks + supp
 
-def store_output(succ_atk, total_qual):
+def get_settings():
     params = {}
     params["lookahead"] = lookahead
     params["alphas"] = alphas
@@ -128,7 +128,10 @@ def store_output(succ_atk, total_qual):
             "wStartPunish": wStartPunish,
             "wBlocksFactor": wBlocksFactor
             }
-  
+    return params
+
+def store_output(succ_atk, total_qual):
+    params = get_settings()
     output = {}
     for el in sim_to_run:
         output[Sim.rev[el]] = {
@@ -181,7 +184,11 @@ class MonteCarlo:
 
                 self.aggr_alpha_stats(alpha, e)
             self.output_full_stats()
-
+        
+        # print params to make results reproducible
+        params = get_settings()
+        print json.dumps(dic, indent=4)
+        
     def output_full_stats(self):
         ### Prettify for output
         print "\nConvergence"
