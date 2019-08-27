@@ -9,7 +9,7 @@ import time
 
 print "Takes around 25 mins..."
 # only set to True if running for a single expected_blocks_per_round
-store_output = False
+store_output = True
 #####
 ## System level params
 #####
@@ -23,7 +23,7 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round = [x + 1 for x in range(10)]
+e_blocks_per_round =[1, 2]# [x + 1 for x in range(10)]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
@@ -130,12 +130,13 @@ def get_settings():
             }
     return params
 
-def store_output(succ_atk, total_qual):
+def store_output(succ_atk, succ_targ, total_qual):
     params = get_settings()
     output = {}
     for el in sim_to_run:
         output[Sim.rev[el]] = {
                 "conv": [{"alpha": alpha, "result": [{"rounds_back": k, "prob": prob} for k, prob in zip(rounds_back, succ_atk[el][idx])]} for idx, alpha in enumerate(alphas)],
+                "target": [{"alpha": alpha, "result": [{"target": targ, "rounds": res} for targ, res in zip(target_conf, succ_targ[el][idx])]} for idx, alpha in enumerate(alphas)],
                 "qual": [{"alpha": alpha, "qual": qual} for alpha, qual in zip(alphas, total_qual[el])]
                 }
 
@@ -156,8 +157,10 @@ class MonteCarlo:
         # What portion of block will adversary publish?
         self.total_qual = {k: [] for k in sim_to_run}
         # type -> alpha -> blocksback -> int
-        # How often will adversarial attack succeed?
+        # How often will adversarial attack succeed across rounds_back?
         self.succ_atk = {k: [] for k in sim_to_run}
+        # and for specific target
+        self.succ_targ = {k: [] for k in sim_to_run}
 
     def reset_sim(self):
         # type -> int
@@ -194,6 +197,7 @@ class MonteCarlo:
         print "\nConvergence"
         for el in sim_to_run:
             assert(len(self.succ_atk[el]) == len(alphas))
+            assert(len(self.succ_targ[el]) == len(alphas))
         
             print Sim.rev[el]
             df = pd.DataFrame(self.succ_atk[el], columns=rounds_back, index=alphas)
@@ -208,7 +212,7 @@ class MonteCarlo:
             print df
 
         if store_output:
-            store_output(self.succ_atk, self.total_qual)
+            store_output(self.succ_atk, self.succ_targ, self.total_qual)
 
     def aggr_alpha_stats(self, alpha, e):
 
@@ -218,6 +222,7 @@ class MonteCarlo:
         # Q1: how often can the attacker create a fork from the average?
         
         succ_atk_alpha = {k: [] for k in sim_to_run}
+        succ_targ_alpha = {k: [] for k in sim_to_run}
         for el in sim_to_run:
             _type = Sim.rev[el]
             avg = np.average(self.lengths[el])
@@ -234,6 +239,7 @@ class MonteCarlo:
             for conf in target_conf:
                 rounds = np.percentile(self.lengths[el], (1-conf)*100)
                 print "{_type}:            {rounds_back} rounds back, atk success is {targ}".format(_type=_type, rounds_back=rounds, targ=conf)
+                succ_targ_alpha[el].append(rounds)
             # what is confidence at various ranges?
             for lookback in rounds_back:
         	likelihood = confidence_of_k(lookback, self.lengths[el])
@@ -244,6 +250,8 @@ class MonteCarlo:
         for el in sim_to_run:
             assert(len(succ_atk_alpha[el]) == len(rounds_back))
             self.succ_atk[el].append(succ_atk_alpha[el])
+            assert(len(succ_targ_alpha[el]) == len(target_conf))
+            self.succ_targ[el].append(succ_targ_alpha[el])
             # Quality is not dependent on lookback, any successful attack will do it so we take avg
             self.total_qual[el].append(np.average(self.quality[el]))
             # plot for a given alpha
