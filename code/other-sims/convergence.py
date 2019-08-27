@@ -187,7 +187,7 @@ class MonteCarlo:
         
         # print params to make results reproducible
         params = get_settings()
-        print json.dumps(dic, indent=4)
+        print json.dumps(params, indent=4)
         
     def output_full_stats(self):
         ### Prettify for output
