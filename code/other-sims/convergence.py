@@ -23,8 +23,8 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round =[1, 2]# [x + 1 for x in range(10)]
-num_sims = 10000
+e_blocks_per_round =[1]# [x + 1 for x in range(10)]
+num_sims = 1000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
 
@@ -93,11 +93,11 @@ def should_end_attack(honest_weight, adversarial_weight, honest_chain, adversari
 
 def should_launch_attack(_type, start, advCount, honCount):
     if _type == Sim.NOHS:
-        return advCount > 0 and start < 0 and advCount >= honCount
+        return advCount > 0 and advCount >= honCount
     else:
         # for EC, makes sense
         # for NOTS, no need to check either: you'll be tied at worst, just launch attack anyways
-        return advCount > 0 and start < 0
+        return advCount > 0
 
 def new_wt(old_wt, numBlocks, power, nulls, supp=0):
     # supp will be added weight for eg headstart
@@ -281,11 +281,13 @@ class MonteCarlo:
         ####
         ## set Params
         ####
-        atk_weight_adv = 0
-        atk_weight_hon = 0
+        weight_adv = 0
+        weight_hon = 0
         # for quality, we are not looking at chains together but rather which has its blocks counted
-        tot_weight_adv = 0
-        tot_weight_hon = 0
+        tot_blocks_adv = 0
+        tot_blocks_hon = 0
+        pot_blocks_adv = 0
+        pot_blocks_hon = 0
         # flags to detect whether attack is running
         start = -2
         end = -1
@@ -310,67 +312,81 @@ class MonteCarlo:
                 power += powerIncreasePerRound
             
             # start attack
-    	    if should_launch_attack(_type, start, j, chain_hon[idx]):
+    	    if start < 0 and should_launch_attack(_type, start, j, chain_hon[idx]):
                 # reset since atkr will compare to this to time end
-                atk_weight_hon = new_wt(0, chain_hon[idx], power, hon_nulls)
-                if _type == Sim.EC:
-                    # both will be counted
-                    atk_weight_adv = new_wt(0, j, power, adv_nulls, chain_hon[idx])
-                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls)
-                else:
-                    # no headstart
-                    atk_weight_adv = new_wt(0, j, power, adv_nulls)
-                
-                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
+                weight_adv = new_wt(weight_hon, j, power, adv_nulls, chain_hon[idx])
+                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+                pot_blocks_adv = tot_blocks_adv + j
+                pot_blocks_hon = tot_blocks_hon + chain_hon[idx]
                 
     		start = idx
                 num_atks += 1
-                # flag edge case which occurs for no hs
-                # prevents attack from ending in the next round when both win at start
-                if _type != Sim.EC:
-                    weight_at_start = atk_weight_hon
 
-    	    # end attack
-            elif start >= 0 and should_end_attack(atk_weight_hon, atk_weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], lookahead) and (weight_at_start < 0 or weight_at_start != atk_weight_hon):
-                end = idx
-                # attacker is sole winner (note that we assume attacker has better connectivity,
-                # ie will always win in case of equal weighted chains -- this is a worst case)
-                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
-                # compare to current longest successful attack in this sim.
-                if end - start > max_len:
-                    max_len = end - start
-    	        # reset to run attack again
-                start = -1
-                end = -1
+    	    # ongoing attack
+            elif start >= 0:
+            
+                # update weights
+                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+    	        weight_adv = new_wt(weight_adv, j, power, adv_nulls)
+                pot_blocks_adv = pot_blocks_adv + j
+                pot_blocks_hon = pot_blocks_hon + chain_hon[idx]
+            
+                # should it be ended?
+                if should_end_attack(weight_hon, weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], lookahead):
+                    end = idx
+               
+                    # check to see who won
+                    # in case not equal, then attacker took too much risk and failed
+                    if weight_hon != weight_adv:
+                        assert(weight_hon > weight_adv)
+                        tot_blocks_hon = pot_blocks_hon
+                    else:
+                        # else, atk pays off (we assume atker has better connectivity and wins ties)
+                        tot_blocks_adv = pot_blocks_adv
+                        # successful fork
+                        weight_hon = weight_adv
+                        if _type == Sim.EC:
+                            # in case of loss, EC still gets first block will be counted
+                            tot_blocks_hon += chain_hon[start]
 
-            # attack didn't start and sim ends
-            elif start < -1 and idx == sim_rounds - 1:
-                self.nostart[_type] += 1
-                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
-                tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls)
+                    # compare to current longest successful attack in this sim.
+                    if end - start > max_len:
+                        max_len = end - start
+    	            # reset to run attack again
+                    start = -1
+                    end = -1
 
-            # attack didn't end and sim ends
-    	    elif start >= 0 and end < 0 and idx == sim_rounds - 1:
-                self.noend[_type] += 1
-	    	# stop attack here successfully. account for max (could have gone on)
-                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls)
-                if sim_rounds - start > max_len:
-                    max_len = sim_rounds - start
+                # attack didn't end and sim ends
+    	        elif end < 0 and idx == sim_rounds - 1:
+                    self.noend[_type] += 1
+	    	    # stop attack here successfully (conservative). account for max (could have gone on)
+                    tot_blocks_adv = pot_blocks_adv
+                    weight_hon = weight_adv
+                    if _type == Sim.EC:
+                        # in case of loss, EC still gets first block will be counted
+                        tot_blocks_hon += chain_hon[start]
+                    if sim_rounds - start > max_len:
+                        max_len = sim_rounds - start
 
-    	    # move forward each step
             else:
-                atk_weight_hon = new_wt(atk_weight_hon, chain_hon[idx], power, hon_nulls)
-    		atk_weight_adv = new_wt(atk_weight_adv, j, power, adv_nulls)
-                # only add to honest weight if not under attack, otherwise honest party's blocks will be invalidated
-                if start < 0:
-                    tot_weight_hon = new_wt(tot_weight_hon, chain_hon[idx], power, hon_nulls) 
-                tot_weight_adv = new_wt(tot_weight_adv, j, power, adv_nulls) 
+                # this is the case we end while not in attack
+                assert(start < 0)
+
+                # attack never started and sim ends
+                if start == -2 and idx == sim_rounds - 1:
+                    self.nostart[_type] += 1
+                
+                # update all counts
+                tot_blocks_adv += j
+                tot_blocks_hon += chain_hon[idx]
+                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+                # adv weight doesn't matter here since it kicks off as weight_hon
         
         # at end of sim, retain stats
         # longest atk, num launched, adv earnings (qual)
         self.lengths[_type].append(max_len)
         self.launched[_type].append(num_atks)
-        self.quality[_type].append(float(tot_weight_adv)/(tot_weight_hon + tot_weight_adv))
+        self.quality[_type].append(float(tot_blocks_adv)/(tot_blocks_hon + tot_blocks_adv))
 
 mc = MonteCarlo()
 mc.run()
