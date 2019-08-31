@@ -8,7 +8,7 @@ Below, the list of sims.
 
 #### Sims in use
 
-- [convergence](./other-sims/convergence) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
+- [convergence](./other-sims/convergence.py) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
   - Generates results for convergence (probability a longer adversarial chain was generated starting x blocks back, for variable x) and chain quality (portion of adversarial:honest blocks mined as compared to their relative power).
   - Used for setting recommended conf time in EC, under various settings.
   - Jump to the [list of sim settings](#monte-carlo-settings)
@@ -17,9 +17,9 @@ Below, the list of sims.
   - Works with weighting-fn
   - Works with lbp
   - Works with headstart
-- [generate-chain](./other-sims/generate-chain) -- simply outputs short runs of binomial tosses for a set number of miners with equal probability of winning.
+- [generate-chain](./other-sims/generate-chain.py) -- simply outputs short runs of binomial tosses for a set number of miners with equal probability of winning.
   - Helpful to visualize how many blocks can be found per round on expectation in EC, e.g. for visualizing how often null blocks can be found (counterintuitively high).
-- [ec-sim-zs](./ec-sim-zs) -- Golang sim and viz of EC.
+- [ec-sim-zs](./ec-sim-zs/) -- Golang sim and viz of EC.
   - Ultra-aggressive (irrational) mining strategy: mine every available fork, release if heavier (no weighting fn) than your own.
   - Includes editable lbp
   - Useful for head change visualisation.
