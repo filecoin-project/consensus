@@ -9,15 +9,15 @@ import time
 
 print "Takes around 25 mins..."
 # only set to True if running for a single expected_blocks_per_round
-store_output = True
+store_output = False
 #####
 ## System level params
 #####
-lookahead = 0
-# alphas = [k/100.0 for k in range(2, 52, 2)]
-alphas=[.3]
+lookbacks = [0] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
+alphas = [k/100.0 for k in range(2, 52, 2)]
+# alphas=[.3]
 rounds_back = []
-# rounds_back = range(5, 105, 10)
+rounds_back = range(5, 105, 10)
 total_qual_ec = []
 total_qual_nohs = []
 total_qual_nots = []
@@ -113,7 +113,7 @@ def new_wt(old_wt, numBlocks, power, nulls, supp=0):
 
 def get_settings():
     params = {}
-    params["lookahead"] = lookahead
+    params["lookbacks"] = lookbacks
     params["alphas"] = alphas
     params["rounds_back"] = rounds_back
     params["miners"] = miners
@@ -130,8 +130,10 @@ def get_settings():
             }
     return params
 
-def store_output(succ_atk, succ_targ, total_qual):
+def store_output(succ_atk, succ_targ, total_qual, e, lb):
     params = get_settings()
+    params["current_e"] = e
+    params["current_lb"] = lb
     output = {}
     for el in sim_to_run:
         output[Sim.rev[el]] = {
@@ -140,7 +142,7 @@ def store_output(succ_atk, succ_targ, total_qual):
                 "qual": [{"alpha": alpha, "qual": qual} for alpha, qual in zip(alphas, total_qual[el])]
                 }
 
-    outputDoc = "./monte/sim_results_{wt}_{lookahead}_{ts}.json".format(wt=wt_fn, lookahead=lookahead, ts=calendar.timegm(time.gmtime()))
+    outputDoc = "./monte/sim_results_{ts}.json".format(ts=calendar.timegm(time.gmtime()))
     _json = {"params": params, "output": output}
     with open(outputDoc, 'w') as f:
         json.dump(_json, f, indent=4)
@@ -173,20 +175,28 @@ class MonteCarlo:
 
 
     def run(self):
+        # state gets too funky if doing both. Only test one set of top level vars at a time
+        assert(len(e_blocks_per_round) == 1 or len(lookbacks) == 1)
         for e in e_blocks_per_round:
             self.reset_top_level()
 
             # equal sized miners: worst case
             self.p = e/float(1*miners)
+            self.e = e
 
-            for alpha in alphas:
-                self.reset_sim()
-                for i in range(num_sims): 
-                    for sim in sim_to_run:
-                        self.run_sim(sim, alpha)
+            for lb in lookbacks:
+                # below reset would break if both e and lh are multiple values
+                self.reset_top_level
+                self.lb = lb
+                
+                for alpha in alphas:
+                    self.reset_sim()
+                    for i in range(num_sims): 
+                        for sim in sim_to_run:
+                            self.run_sim(sim, alpha)
 
-                self.aggr_alpha_stats(alpha, e)
-            self.output_full_stats()
+                    self.aggr_alpha_stats(alpha)
+                self.output_full_stats()
         
         # print params to make results reproducible
         params = get_settings()
@@ -212,11 +222,11 @@ class MonteCarlo:
             print df
 
         if store_output:
-            store_output(self.succ_atk, self.succ_targ, self.total_qual)
+            store_output(self.succ_atk, self.succ_targ, self.total_qual, self.e, self.lb)
 
-    def aggr_alpha_stats(self, alpha, e):
+    def aggr_alpha_stats(self, alpha):
 
-        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}, expected blocks per round: {e}".format(alpha=alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=lookahead, e=e)
+        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}, expected blocks per round: {e}".format(alpha=alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=self.lb, e=self.e)
         
         # statement: the median is the distance such that an attacker creates a fork 50% of the time.
         # Q1: how often can the attacker create a fork from the average?
@@ -332,7 +342,7 @@ class MonteCarlo:
                 pot_blocks_hon = pot_blocks_hon + chain_hon[idx]
             
                 # should it be ended?
-                if should_end_attack(weight_hon, weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], lookahead):
+                if should_end_attack(weight_hon, weight_adv, chain_hon[idx+1:], chain_adv[idx+1:], self.lb):
                     end = idx
                
                     # check to see who won
