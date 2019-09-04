@@ -8,8 +8,8 @@ Below, the list of sims.
 
 #### Sims in use
 
-- [convergence](./other-sims/convergence.py) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
-  - Generates results for convergence (probability a longer adversarial chain was generated starting x blocks back, for variable x) and chain quality (portion of adversarial:honest blocks mined as compared to their relative power).
+- [ec-withhold](./other-sims/ec-withhold.py) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
+  - Generates results for block withholding (probability a longer adversarial chain was generated starting x blocks back, for variable x) and chain quality (portion of adversarial:honest blocks mined as compared to their relative power).
   - Used for setting recommended conf time in EC, under various settings.
   - Jump to the [list of sim settings](#monte-carlo-settings)
 - [markov](./other-sims/ec-markov.py) -- Markov Chain closed-form for EC, as described in [confirmation time observable](https://observablehq.com/d/432bc3aeac0ca166).
@@ -32,12 +32,12 @@ Below, the list of sims.
 
 ### Monte-Carlo Settings
 
-The list below lays out the different parameter-sets that can be used with the [Monte-Carlo sim](./other-sims/convergence.py) to simulate various results for EC.
+The list below lays out the different parameter-sets that can be used with the [Monte-Carlo sim](./other-sims/ec-withhold.py) to simulate various results for EC.
 
 In short, the sim uses binomials to estimate number of blocks per round for EC for honest and adversarial miners over series of rounds. It models what an adversary might do by running standard selfish mining, and keeps track of
 
 - how often they mine blocks (vs expected from their power) -- quality
-- longest run of block withholding in series -- convergence/finality
+- longest run of block withholding in series -- confirmation/finality
 
 #### Params list
 
