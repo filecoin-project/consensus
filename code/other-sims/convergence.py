@@ -23,8 +23,8 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 10000
 sim_rounds = 5000
-e_blocks_per_round =[1]# [x + 1 for x in range(10)]
-num_sims = 1000
+e_blocks_per_round = [1] #[x + 1 for x in range(10)]
+num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
 
@@ -36,9 +36,10 @@ powerIncreasePerDay = .025 # 2.5% per day for double power in 28 days (1,250 TB 
 # assuming a 30 sec block time and uniform increase
 RDS_PER_DAY = 86400./30
 powerIncreasePerRound = powerIncreasePerDay/RDS_PER_DAY
-wPunishFactor = .896
-wStartPunish = 4
-wBlocksFactor = 1.4281
+wPunishFactor = .708
+wBlocksFactorTransitionConst = 350
+wStartPunish = 5
+wBlocksFactor = "350*(log2((1-alpha)*networkSize(r))/(1-alpha))"
 
 #####
 ## Helper fns
@@ -98,18 +99,6 @@ def should_launch_attack(_type, start, advCount, honCount):
         # for EC, makes sense
         # for NOTS, no need to check either: you'll be tied at worst, just launch attack anyways
         return advCount > 0
-
-def new_wt(old_wt, numBlocks, power, nulls, supp=0):
-    # supp will be added weight for eg headstart
-    if wt_fn:
-        # edge cases at beg of chain + actual condition, skip last one
-        if nulls >= wStartPunish:
-            wNullFactor = wPunishFactor ** nulls
-        else:
-            wNullFactor = 1.
-        return old_wt + wNullFactor*(math.log10(power) + wBlocksFactor*(numBlocks + supp))
-    else:
-        return old_wt + numBlocks + supp
 
 def get_settings():
     params = {}
@@ -173,6 +162,19 @@ class MonteCarlo:
         self.launched = {k: [] for k in sim_to_run}
         self.quality = {k: [] for k in sim_to_run}
 
+    def new_wt(self, old_wt, numBlocks, power, nulls, supp=0):
+        # supp will be added weight for eg headstart
+        if wt_fn:
+            # edge cases at beg of chain + actual condition, skip last one
+            if nulls >= wStartPunish:
+                wNullFactor = wPunishFactor ** nulls
+            else:
+                wNullFactor = 1.
+            wBlocksFactor = wBlocksFactorTransitionConst*(math.log2(1-self.alpha)*power)/(1-self.alpha)
+            return old_wt + wNullFactor*(math.log2(power) + wBlocksFactor*(numBlocks + supp))
+        else:
+            return old_wt + numBlocks + supp
+
 
     def run(self):
         # state gets too funky if doing both. Only test one set of top level vars at a time
@@ -186,16 +188,17 @@ class MonteCarlo:
 
             for lb in lookbacks:
                 # below reset would break if both e and lh are multiple values
-                self.reset_top_level
+                self.reset_top_level()
                 self.lb = lb
                 
                 for alpha in alphas:
                     self.reset_sim()
+                    self.alpha = alpha
                     for i in range(num_sims): 
                         for sim in sim_to_run:
-                            self.run_sim(sim, alpha)
+                            self.run_sim(sim)
 
-                    self.aggr_alpha_stats(alpha)
+                    self.aggr_alpha_stats()
                 self.output_full_stats()
         
         # print params to make results reproducible
@@ -224,9 +227,9 @@ class MonteCarlo:
         if store_output:
             store_output(self.succ_atk, self.succ_targ, self.total_qual, self.e, self.lb)
 
-    def aggr_alpha_stats(self, alpha):
+    def aggr_alpha_stats(self):
 
-        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}, expected blocks per round: {e}".format(alpha=alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=self.lb, e=self.e)
+        print "\nAttacker power alpha: {alpha}%, num of rounds: {sim_rounds}, num of sims: {sims}, lookahead: {la}, expected blocks per round: {e}".format(alpha=self.alpha*100, sims=num_sims, sim_rounds=sim_rounds, la=self.lb, e=self.e)
         
         # statement: the median is the distance such that an attacker creates a fork 50% of the time.
         # Q1: how often can the attacker create a fork from the average?
@@ -268,17 +271,17 @@ class MonteCarlo:
             # plt.plot(rounds_back, succ_atk_alpha[el])
         # plt.xlabel("blocks behind")
         # plt.ylabel("chance of success")
-        # plt.title("Confirmation time for alpha={alpha}".format(alpha=alpha))
+        # plt.title("Confirmation time for alpha={alpha}".format(alpha=self.alpha))
         # fig1 = plt.gcf()
-        # fig1.savefig("{alpha}-confirmationTime.png".format(alpha=alpha), format="png")
+        # fig1.savefig("{alpha}-confirmationTime.png".format(alpha=self.alpha), format="png")
         # plt.clf()
         
-    def run_sim(self, _type, alpha):
+    def run_sim(self, _type):
     	# result of flipping a coin honest_miners/adv_miners times, tested 1000 times.
     	# is this sim of praos overly optimistic: it glosses over potential fork when multiple honest wins
     	# put another way, it represents choice between longest honest and longest adv, and not between longest honests
-        hon_miners = round((1-alpha)*miners)
-        adv_miners = round(alpha*miners)
+        hon_miners = round((1-self.alpha)*miners)
+        adv_miners = round(self.alpha*miners)
         ch = np.random.binomial(hon_miners, self.p, sim_rounds)
     	ca = np.random.binomial(adv_miners, self.p, sim_rounds)
         if _type == Sim.NOTS:
@@ -319,13 +322,13 @@ class MonteCarlo:
             if wt_fn:
                 hon_nulls = hon_nulls + 1 if chain_hon[idx] == 0 else  0
                 adv_nulls = adv_nulls + 1 if j == 0 else 0
-                power += powerIncreasePerRound
+                power *= (1 + powerIncreasePerRound)
             
             # start attack
     	    if start < 0 and should_launch_attack(_type, start, j, chain_hon[idx]):
                 # reset since atkr will compare to this to time end
-                weight_adv = new_wt(weight_hon, j, power, adv_nulls, chain_hon[idx])
-                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+                weight_adv = self.new_wt(weight_hon, j, power, adv_nulls, chain_hon[idx])
+                weight_hon = self.new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
                 pot_blocks_adv = tot_blocks_adv + j
                 pot_blocks_hon = tot_blocks_hon + chain_hon[idx]
                 
@@ -336,8 +339,8 @@ class MonteCarlo:
             elif start >= 0:
             
                 # update weights
-                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
-    	        weight_adv = new_wt(weight_adv, j, power, adv_nulls)
+                weight_hon = self.new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+    	        weight_adv = self.new_wt(weight_adv, j, power, adv_nulls)
                 pot_blocks_adv = pot_blocks_adv + j
                 pot_blocks_hon = pot_blocks_hon + chain_hon[idx]
             
@@ -389,7 +392,7 @@ class MonteCarlo:
                 # update all counts
                 tot_blocks_adv += j
                 tot_blocks_hon += chain_hon[idx]
-                weight_hon = new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
+                weight_hon = self.new_wt(weight_hon, chain_hon[idx], power, hon_nulls)
                 # adv weight doesn't matter here since it kicks off as weight_hon
         
         # at end of sim, retain stats
