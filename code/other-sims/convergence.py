@@ -13,11 +13,11 @@ store_output = False
 #####
 ## System level params
 #####
-lookbacks = [0] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
-alphas = [k/100.0 for k in range(2, 52, 2)]
-# alphas=[.3]
+lookbacks = [10] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
+# alphas = [k/100.0 for k in range(2, 52, 2)]
+alphas=[.3]
 rounds_back = []
-rounds_back = range(5, 105, 10)
+# rounds_back = range(5, 105, 10)
 total_qual_ec = []
 total_qual_nohs = []
 total_qual_nots = []
@@ -170,8 +170,8 @@ class MonteCarlo:
                 wNullFactor = wPunishFactor ** nulls
             else:
                 wNullFactor = 1.
-            wBlocksFactor = wBlocksFactorTransitionConst*(math.log2(1-self.alpha)*power)/(1-self.alpha)
-            return old_wt + wNullFactor*(math.log2(power) + wBlocksFactor*(numBlocks + supp))
+            wBlocksFactor = wBlocksFactorTransitionConst*(math.log((1-self.alpha)*power, 2)/(1-self.alpha))
+            return old_wt + wNullFactor*(math.log(power, 2) + wBlocksFactor*(numBlocks + supp))
         else:
             return old_wt + numBlocks + supp
 
