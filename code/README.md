@@ -8,7 +8,7 @@ Below, the list of sims.
 
 #### Sims in use
 
-- [ec-withhold](./other-sims/ec-withhold.py) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
+- [ec-withhold](./other-sims/ec_withhold.py) -- Main Monte-Carlo simulation for EC, modeling finality against withholding attack (as in [BTC section 11](https://bitcoin.org/bitcoin.pdf)).
   - Generates results for block withholding (probability a longer adversarial chain was generated starting x blocks back, for variable x) and chain quality (portion of adversarial:honest blocks mined as compared to their relative power).
   - Used for setting recommended conf time in EC, under various settings.
   - Jump to the [list of sim settings](#monte-carlo-settings)
