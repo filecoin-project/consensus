@@ -4,30 +4,30 @@ import itertools
 
 nh=67 #number of honest players
 na=33#number of adversarial players
-ntot=na+nh #total num,ber of players
+ntot=na+nh #total number of players
 p=1./float(ntot) #proba for one leader to be elected
 Kmax=40 #length of the attack
 grind_max=30 #how many "grinds" we allow
-sim=1000 #number of simulations
+sim=100 #number of simulations
 forks=[]
 
 
 
-#This is the "honest" strategy (i.e. no grinding)
+#This is the "no grinding" strategy 
 forks=[]
 for i in range(sim):
-	honest_fork_length=0
+	nogrinding_fork_length=0
 	slot_number=0
 	ca = np.random.binomial(na, p, 1)[0]#each player toss a coin that succeed with probability p
 	#(i.e. each player is elected with probability p)
 	while slot_number<Kmax:
 		if ca>0:#there were leaders elected, one block is created
-			honest_fork_length+=1
+			nogrinding_fork_length+=1
 			#no leaders elected everyone moves to next slot
 		slot_number+=1
 		ca = np.random.binomial(na, p, 1)[0]#each player toss
 			#a new coin for that round
-	forks.append(honest_fork_length)
+	forks.append(nogrinding_fork_length)
 
 
 print "Length of Fork without grinding: {f}.".format(f=np.average(forks))
