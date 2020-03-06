@@ -16,37 +16,48 @@
 
 import numpy as np
 import math
+import utils
 
 
 s=100000
 att=2/10
 honest=1-att
 e=10
-def poisson(successes, fraction,e):
-    rate = fraction * e
-    return rate**successes * np.exp(-rate) / math.factorial(successes)
 
-def cdf_poisson(successes, fraction,e):
-    # go from k:0 -> successes-1: SUM(Pr[X < k])
-    return sum([poisson(k,fraction,e) for k in range(successes)])
+def poisson(k1,k2):
+    ## pr. honest finds less blocks
+    honest_pr = utils.poisson_cdf(k1 + k2,honest* e)
+    ## attacker number of blocks at first round
+    malicious_1 = utils.poisson(k1,att*e)
+    ## attacker number of blocks at second round
+    malicious_2 = utils.poisson(k2,att*e)
+    return honest_pr,malicious_1,malicious_2
 
-max_pr = 0
-sum_pr = 0
-max_k = 20
-for k1 in range(1,max_k):
-    for k2 in range(1, max_k):
-        ## pr. honest finds less blocks
-        honest = cdf_poisson(k1 + k2,honest,e)
-        ## attacker number of blocks at first round
-        malicious_1 = poisson(k1,att,e)
-        ## attacker number of blocks at second round
-        malicious_2 = poisson(k2,att,e)
+def binomial(k1,k2):
+    ## pr. honest finds less blocks
+    honest_pr = utils.binomial_cdf(k1 + k2,honest*s,e/s)
+    ## attacker number of blocks at first round
+    malicious_1 = utils.binomial(k1,att*s,e/s)
+    ## attacker number of blocks at second round
+    malicious_2 = utils.binomial(k2,att*s,e/s)
+    return honest_pr,malicious_1,malicious_2
 
-        total = honest * malicious_1 * malicious_2
-        if total > max_pr:
-            max_pr = total
-        sum_pr += total
 
-print("max probability: {}".format(max_pr))
-print("sum probability: {}".format(sum_pr))
-#max probability: 0.07897737740253372
+def compute(prob_function):
+    max_pr = 0
+    sum_pr = 0
+    max_k = 20
+    for k1 in range(1,max_k):
+        for k2 in range(1, max_k):
+            (honest_pr,malicious_1,malicious_2) = prob_function(k1,k2)
+            total = honest_pr * malicious_1 * malicious_2
+            if total > max_pr:
+                max_pr = total
+            sum_pr += total
+    print("max probability: {}".format(max_pr))
+    print("sum probability: {}".format(sum_pr))
+
+print(" --- using poisson approximation ---")
+compute(poisson)
+print(" --- using binomial approximation ---")
+compute(binomial)
