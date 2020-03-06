@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math
 import numpy as np
+import utils as u
 
 # Time divided in T slots
 # H_j : random variable denoting the slot honest player j chooses
@@ -32,14 +33,12 @@ import numpy as np
 ## chances of success are higher).
 ##    - we can consider n the number of honest players
 
-## let's imagine 50ms discrete time slots:
+## let's imagine 100ms discrete time slots:
 ## 1s contains 20 of those
-## if we spread randomized cutoff for a period of 2s we get 40 timeslots
-## [ T - 1s; T + 1s]
-nb_time_slots = 40
-n=1000 # ? unknown
+## if we spread randomized cutoff for a period of 4s we get 40 timeslots
+## [ T - 2s; T + 2s]
+nb_time_slots = 100
 print("number of time slots: {}".format(nb_time_slots))
-print("number of nodes in network: {}".format(n))
 
 def pr_hj():
     return 1 / nb_time_slots
@@ -47,9 +46,6 @@ def pr_hj():
 ## Pr[ A_j = t ]
 def pr_aj():
     return pr_hj()
-
-def binomial(k,n,p):
-    return math.comb(n,k) * np.power(p,k) * np.power((1-p),(n-k))
 
 ## Pr[ S_j = 1]
 def pr_sj():
@@ -59,7 +55,8 @@ def pr_sj():
     return res
 
 def pr_a(target,total):
-    return binomial(target,total,pr_sj())
+    # print("pr_a: {} {} {}".format(target,total,pr_sj()))
+    return u.binomial(target,total,pr_sj())
 
 def pr_a_sums(targets,total):
     return sum([pr_a(t,total) for t in targets])
@@ -68,15 +65,26 @@ def pr_a_sums(targets,total):
 def continuous(rounds,targets,total):
     return np.prod([pr_a_sums(targets,total) for i in range(rounds)])
 
-target=int(n/2)
+n=1000
+f=1/3
+h=1-1/3
+print("number of honest nodes in network: {}".format(h))
+# there are two viable strategies:
+# 1. send to only the minimum number of nodes such that it reaches 50% so
+# attacker will mine next round on its own block
+# 2. send to half of the honest nodes and attack can mine on any half
+# 2 gives higher chances of prob.
+# target1=int(n/2 - n/3)
+target=int(h*n/2)
+print("number of nodes to target: {}".format(target))
 low=0.49
 high=0.51
 targets=range(int(low * n), int(high* n))
 rounds=10
 print("Probability of successfully targeting one node: {}".format(pr_sj()))
-print("Probability of targeting {} nodes: {}".format(target,pr_a(target,n)))
-print("Probability of targeting [{}n,{}n] nodes: {}".format(low,high,pr_a_sums(targets,n)))
-print("Probability of running attack for 10 rounds (for target [..]): {}".format(continuous(rounds,targets,n)))
+print("Probability of targeting {} nodes: {}".format(target,pr_a(target,h*n)))
+print("Probability of targeting [{}n,{}n] nodes: {}".format(low,high,pr_a_sums(targets,h*n)))
+print("Probability of running attack for 10 rounds (for target [..]): {}".format(continuous(rounds,targets,h*n)))
 
 # number of time slots: 40
 # number of nodes in network: 1000
@@ -84,5 +92,3 @@ print("Probability of running attack for 10 rounds (for target [..]): {}".format
 # Probability of targeting 500 nodes: 0.018453214628727465
 # Probability of targeting [0.49n,0.51n] nodes: 0.35179843051803916
 # Probability of running attack for 10 rounds (for target [..]): 2.9036146305554976e-05
-
-
