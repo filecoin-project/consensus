@@ -28,3 +28,7 @@ def attacks_happens(e,att,honest):
 print("e = {}, attacker fraction = {}".format(e,att))
 print("-> ratio is {}".format(ratio(e,att)))
 print("-> attacks happens {} fraction of the time".format(attacks_happens(e,att,honest)))
+# e = 5, attacker fraction = 0.3333333333333333
+# -> ratio is 1.05948988933682
+# -> attacks happens 0.035673993347252374 fraction of the time
+
