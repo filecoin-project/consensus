@@ -16,79 +16,136 @@ import utils as u
 #               = SUM(..) Pr[ A_j = t] * (1 - SUM(ti:0 -> t) Pr[ H_j = ti ]
 #               = SUM(..) 1 / T * (1 - SUM(ti:0 -> t) 1 / T)
 #
+# A more precise model introduces the notion of a maximum delay d such that the
+# attacker that transmits a block to a node do it "just" before the node's
+# deadline. Just before means between [t-d; t]
+# re-transmit.
+# P_j: random variable = 1 if attacker guessed a time "close" to the time t of
+# player j
+# Pr[ P_j = 1 ] = SUM(t: 0->T) Pr[ t-d <= A_j <= t | H_j = t ]
+#               = SUM(t: 0->T) [ SUM(ti:t-d->t) Pr[A_j = ti] ] * Pr[H_j = t]
+#
 # Then want to know probability of success to have success on half of the nodes
 # in the network (of size n)
 # A: random variable denoting how many nodes did attacker reached before their
 # timeout
 # Pr[ A = n/2 ] = Binomial(n/2, n, Pr[ S_j = 1])
+# Or using the more precise model
+# Pr[ A = n/2 ] = Binomial(n/2, n, Pr[ P_j = 1])
 # Probability that attacker reaches approximately a range
 # Pr[ low < A < high ] SUM(t: low -> high) Pr[ A = t ]
 
 ## Approximation taken: 
 ## * n is size of the network but we want to target in terms of power. We assume
 ## there are enough small miners to have a reliable mapping
+##      - this actually gives more prob. of success for attacker, since it
+## doesn't differentiate between miners while it should.
 ## * There are less honest nodes than n: 
 ##    -in this case the prob. of success of ## the attacker is a lower bound so
 ## it's OK (attacker has to reach lesss target ## if we remove this approx. so
 ## chances of success are higher).
 ##    - we can consider n the number of honest players
+## * Pr[ S_j = 1 ] is too relaxed: in practice if he sends it one sec before the
+## random deadline, the block is gonna get passed around via gossip. However
+## analysis shows it already  has a low chance of probability.
 
-## let's imagine 100ms discrete time slots:
-## 1s contains 20 of those
-## if we spread randomized cutoff for a period of 4s we get 40 timeslots
-## [ T - 2s; T + 2s]
-nb_time_slots = 100
-print("number of time slots: {}".format(nb_time_slots))
+def pr_hj(nslot):
+    return 1 / nslot
 
-def pr_hj():
-    return 1 / nb_time_slots
+def pr_hj_cdf(upto,nslot):
+    return sum([pr_hj(nslot) for t in range(upto)])
 
 ## Pr[ A_j = t ]
-def pr_aj():
-    return pr_hj()
+def pr_aj(nslot):
+    return pr_hj(nslot)
+
+def pr_aj_cdf(upto,nslot,start=0):
+    return sum([pr_aj(nslot) for t in range(start,upto)])
 
 ## Pr[ S_j = 1]
-def pr_sj():
+def pr_sj(info):
+    nslot = info['nslot']
     res = 0
-    for t in range(nb_time_slots):
-        res += pr_aj() * (1 - sum([pr_hj() for ti in range(t)]))
+    for t in range(nslot):
+        res += pr_aj(nslot) * (1 - pr_hj_cdf(t,nslot))
     return res
 
-def pr_a(target,total):
-    # print("pr_a: {} {} {}".format(target,total,pr_sj()))
-    return u.binomial(target,total,pr_sj())
+def pr_pj(info):
+    nslot = info['nslot']
+    delay = info['delay']
+    res = 0
+    for t in range(delay,nslot):
+        ## even though it's a constant because of uniform dist. let's keep 
+        ## according to formulas
+        left = pr_aj_cdf(t,nslot,t-delay)
+        right = pr_hj(nslot)
+        res += left*right
+        # print("{} - {} -> {}".format(left,right,res))
+    return res
 
-def pr_a_sums(targets,total):
-    return sum([pr_a(t,total) for t in targets])
+def pr_a(info,target):
+    mean_prob = np.mean([info['prob'](info) for t in range(10)])
+    return u.binomial(target,info['honests'],mean_prob)
+
+def pr_a_sums(info):
+    lown = int(info['low'] * info['target'])
+    highn = int(info['high'] * info['target'])
+    targets = range(lown,highn)
+    return sum([pr_a(info,target) for target in targets])
 
 ## pr to run this continuously
-def continuous(rounds,targets,total):
-    return np.prod([pr_a_sums(targets,total) for i in range(rounds)])
+def continuous(info):
+    return np.prod([pr_a_sums(info) for i in range(info['rounds'])])
 
-n=1000
-f=1/3
-h=1-1/3
-print("number of honest nodes in network: {}".format(h))
-# there are two viable strategies:
-# 1. send to only the minimum number of nodes such that it reaches 50% so
-# attacker will mine next round on its own block
-# 2. send to half of the honest nodes and attack can mine on any half
-# 2 gives higher chances of prob.
-# target1=int(n/2 - n/3)
-target=int(h*n/2)
-print("number of nodes to target: {}".format(target))
-low=0.49
-high=0.51
-targets=range(int(low * n), int(high* n))
-rounds=10
-print("Probability of successfully targeting one node: {}".format(pr_sj()))
-print("Probability of targeting {} nodes: {}".format(target,pr_a(target,h*n)))
-print("Probability of targeting [{}n,{}n] nodes: {}".format(low,high,pr_a_sums(targets,h*n)))
-print("Probability of running attack for 10 rounds (for target [..]): {}".format(continuous(rounds,targets,h*n)))
+def print_info(info):
+    print("Computation using {}".format(info['prob'].__name__))
+    print("Total number of nodes: {}".format(info['nodes']))
+    print("Honest nodes: {} - Attacker nodes: {}".format(info['honests'],info['attacker']))
+    print("Target: t={} - range target [{}t,{}t] - for {} rounds".format(info['target'],info['low'],info['high'],info['rounds']))
+    print("Number of time slots: {} - Maximum delay: {}".format(info['nslot'],info['delay'])) 
 
-# number of time slots: 40
-# number of nodes in network: 1000
-# Probability of successfully targeting one node: 0.5125
-# Probability of targeting 500 nodes: 0.018453214628727465
-# Probability of targeting [0.49n,0.51n] nodes: 0.35179843051803916
-# Probability of running attack for 10 rounds (for target [..]): 2.9036146305554976e-05
+def default(prob=pr_sj):
+    info={}
+    ## let's imagine 100ms discrete time slots:
+    ## 1s contains 20 of those
+    ## if we spread randomized cutoff for a period of 4s we get 40 timeslots
+    ## [ T - 2s; T + 2s]
+    info['nslot'] = 40
+    info['delay'] = 4
+    # number of nodes in total
+    n = 1000
+    info['nodes']=n
+    info['honests']=1/3 * n
+    info['attacker']=(1-1/3) * n
+    # there are two viable strategies:
+    # 1. send to only the minimum number of nodes such that it reaches 50% so
+    # attacker will mine next round on its own block
+    # 2. send to half of the honest nodes and attack can mine on any half
+    # 2 gives higher chances of prob.
+    # target=int(n/2 - n/3)
+    info['target']=int(info['honests']/2)
+    info['low']=1
+    info['high']=1.9
+    info['rounds']=10
+    info['prob'] = prob
+    return info
+
+def run_computations(info):
+    print("-----------------------------------------")
+    print("\n+++ INFO +++")
+    print_info(info)
+    print("\n+++ RESULTS +++")
+    target = info['target']
+    prob = info['prob']
+    print("Probability of successfully targeting one node: {}".format(prob(info)))
+    print("Probability of reaching exactly the # of targets: {}".format(pr_a(info,target)))
+    sums=pr_a_sums(info)
+    print("Probability of targeting the range of nodes: {}".format(sums))
+    rounds=continuous(info)
+    print("Probability of running attack for 10 rounds (for target [..]): {}".format(rounds))
+    print("-----------------------------------------")
+
+info=default()
+run_computations(info)
+info2=default(prob=pr_pj)
+run_computations(info2)
