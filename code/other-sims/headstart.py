@@ -20,9 +20,9 @@ import utils
 
 
 s=100000
-att=2/10
+att=.3
 honest=1-att
-e=10
+e=5
 
 def poisson(k1,k2):
     ## pr. honest finds less blocks
@@ -48,14 +48,17 @@ def compute(prob_function):
     sum_pr = 0
     max_k = 20
     for k1 in range(1,max_k):
-        for k2 in range(1, max_k):
+        for k2 in range(0, max_k):
             (honest_pr,malicious_1,malicious_2) = prob_function(k1,k2)
+            if k1 + k2 < honest*e:
+                continue
             total = honest_pr * malicious_1 * malicious_2
             if total > max_pr:
                 max_pr = total
             sum_pr += total
     print("max probability: {}".format(max_pr))
     print("sum probability: {}".format(sum_pr))
+    print("chain quality reduction: {}".format(sum_pr*0.5))
 
 print(" --- using poisson approximation ---")
 compute(poisson)
