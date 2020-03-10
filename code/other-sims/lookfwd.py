@@ -94,9 +94,7 @@ def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
     print("-> maximum numbers of blocks to grind on: {}".format(togrind_on))
     adv = ratio(e,att,togrind_on)
     original = ratio(e,att)
-    reduction = int(100 * (adv - 1) / (original - 1) )
     print("-> ratio of the attacker: {:.4f} vs original {:4f}".format(adv,original)) 
-    print("-> reduction of ~{}% of adversarial advantage".format(reduction))
 
 print("e = {}, attacker fraction = {}".format(e,att))
 lookfwd_writeup(e,att,honest)
