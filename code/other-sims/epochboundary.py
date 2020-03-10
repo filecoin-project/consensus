@@ -3,6 +3,12 @@ import math
 import numpy as np
 import utils as u
 
+## Epoch Boundary attack mitigation:
+## This is the analysis of the effectiveness of the randomization mitigiation
+## for the epoch boundary boundary attack: an honest player chooses a random
+## cutoff at each round after which he doesn't accept new blocks for the current
+## round.
+
 # Time divided in T slots
 # H_j : random variable denoting the slot honest player j chooses
 # Pr[ H_j = t ] = 1 / T
@@ -10,7 +16,7 @@ import utils as u
 # Pr[ A_j = t ] = 1 / T  = Pr[ H_j = t ]
 # Then want to know the probability of sucess for targeting a specific player:
 # S_j: random variable being 1 if attacker guessed a smaller t than the one
-# honest player j picked
+# honest player j picked. See later for a better model.
 # Pr[ S_j = 1 ] = SUM(t: 0->T) Pr[ A_j = t | H_j >= t] 
 #               = SUM(..) 1 / T * (1 - Pr[ H_j < t])
 #               = SUM(..) Pr[ A_j = t] * (1 - SUM(ti:0 -> t) Pr[ H_j = ti ]
@@ -19,21 +25,22 @@ import utils as u
 # A more precise model introduces the notion of a maximum delay d such that the
 # attacker that transmits a block to a node do it "just" before the node's
 # deadline. Just before means between [t-d; t]
-# re-transmit.
+# If the adversary broadcasts before t-d, the honest player have the chance to
+# rebroadcast the block to other peers hence defeating the attack.
 # P_j: random variable = 1 if attacker guessed a time "close" to the time t of
 # player j
-# Pr[ P_j = 1 ] = SUM(t: 0->T) Pr[ t-d <= A_j <= t | H_j = t ]
-#               = SUM(t: 0->T) [ SUM(ti:t-d->t) Pr[A_j = ti] ] * Pr[H_j = t]
+# Pr[ P_j = 1 ] = SUM(t: d->T) Pr[ t-d <= A_j <= t | H_j = t ]
+#               = SUM(t: d->T) (Pr[Aj <= t] - Pr[ A_j < t-d])* Pr[ H_j = t ]
 #
-# Then want to know probability of success to have success on half of the nodes
-# in the network (of size n)
+# Then want to know probability of attacker to reach success on half of the
+# honest nodes in the network (of size n*h with h = # honest players)
 # A: random variable denoting how many nodes did attacker reached before their
 # timeout
-# Pr[ A = n/2 ] = Binomial(n/2, n, Pr[ S_j = 1])
+# Pr[ A = n*h/2 ] = Binomial(n*h/2, n, Pr[ S_j = 1])
 # Or using the more precise model
-# Pr[ A = n/2 ] = Binomial(n/2, n, Pr[ P_j = 1])
+# Pr[ A = n*h/2 ] = Binomial(n*h/2, n, Pr[ P_j = 1])
 # Probability that attacker reaches approximately a range
-# Pr[ low < A < high ] SUM(t: low -> high) Pr[ A = t ]
+# Pr[ low < A < high ] = BinomialCDF(low -> high) = SUM(t: low -> high) Pr[ A = t ]
 
 ## Approximation taken: 
 ## * n is size of the network but we want to target in terms of power. We assume
@@ -107,13 +114,13 @@ def print_info(info):
 def default(prob=pr_sj):
     info={}
     ## let's imagine 100ms discrete time slots:
-    ## 1s contains 20 of those
+    ## 1s contains 10 of those
     ## if we spread randomized cutoff for a period of 4s we get 40 timeslots
     ## [ T - 2s; T + 2s]
     info['nslot'] = 40
-    info['delay'] = 4
+    info['delay'] = 5
     # number of nodes in total
-    n = 1000
+    n = 50
     info['nodes']=n
     info['honests']=1/3 * n
     info['attacker']=(1-1/3) * n
@@ -124,6 +131,12 @@ def default(prob=pr_sj):
     # 2 gives higher chances of prob.
     # target=int(n/2 - n/3)
     info['target']=int(info['honests']/2)
+    # Attacker tries to attack a certain percentage of nodes, not necessarily
+    # exactly 50%. We give here the factor for the lower bounds and a factor for
+    # the highest bounds. It translates to the attacker trying to attack a
+    # portion of honest nodes between [low * target; high * target]
+    # Here I set low = 1 because with low < 1, low * target < 50% so attacker
+    # risks losing its block.
     info['low']=1
     info['high']=1.9
     info['rounds']=10
