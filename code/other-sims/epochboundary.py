@@ -120,7 +120,7 @@ def default(prob=pr_sj):
     info['nslot'] = 40
     info['delay'] = 5
     # number of nodes in total
-    n = 100
+    n = 50
     info['nodes']=n
     info['honests']=1/3 * n
     info['attacker']=(1-1/3) * n
