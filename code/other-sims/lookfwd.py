@@ -71,7 +71,7 @@ def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
         ## minimum_inclusion is the minimum number of blocks attacker must
         ## include
         minimum_inclusion = int(exp_round)
-        for blocks_kept in reversed(range(0,minimum_inclusion)):
+        for blocks_kept in range(0,minimum_inclusion):
             round1 = blocks_kept
             round2 = expa
             round3 = expa + exph
@@ -83,7 +83,7 @@ def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
             pr = 1 - u.binomial_cdf(int(minrat), s*rat, e/s)
             print("\t  Rational player needs to find >= {:.3f} blocks".format(minrat))
             print("\t  Rational probability of having more blocks: {:.3f}".format(pr))
-            if pr >= rate_success:
+            if pr < rate_success:
                 return blocks_kept
         raise Exception("no such numbers!")
 
