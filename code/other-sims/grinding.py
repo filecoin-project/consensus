@@ -9,7 +9,7 @@ attacker=1/3 # fraction of attacker power
 honest=1-attacker
 e=5
 Kmax=10#length of the attack
-null_blocks=3#how many "grinds" we allow
+null_blocks=6#how many "grinds" we allow
 
 def nogrinding(e,power,sim,Kmax,init_power):
     forks=[]
@@ -24,10 +24,7 @@ def grind_branch(node):
     won_blocks = node['won']
     slot = node['slot']
     # constants but allows for parallelism 
-    power = node['power']
-    e = node['e']
-    null = node['null']
-    kmax = node['kmax']
+    power,e,null,kmax = node['power'],node['e'],node['null'],node['kmax']
     if slot >= kmax:
         return []
 
@@ -89,11 +86,7 @@ def grinding_runsim(info):
 def grinding(e,power,sim,Kmax,null_blocks,headstart=False):
     cpus = mp.cpu_count()
     with mp.Pool(processes=cpus) as pool:
-        info = {
-           'e':e,
-           'power':power,
-           'null':null_blocks,
-           'kmax': Kmax,
+        info = { 'e':e, 'power':power, 'null':null_blocks, 'kmax': Kmax,
            'headstart': headstart,
         }
         return pool.map(grinding_runsim, [info]*sim)
@@ -101,27 +94,46 @@ def grinding(e,power,sim,Kmax,null_blocks,headstart=False):
 def quality_chain(attacker, honest):
     return [1 if attacker[i]>=honest[i] else 0 for i in range(sim)]
 
-def run(headstart=False):
-    print("Simulation starting with e={}, Kmax={} and null blocks={}".format(e,Kmax,null_blocks))
-    print("-> headstart mode: {}".format(headstart))
-    cpus = mp.cpu_count()
-    print("-> number of CPUs: {}".format(cpus))
+def run(kmax,null,e,attacker,headstart=False,log=False):
+    honest = 1 - attacker
     honest_chain = nogrinding(e,honest,sim,Kmax,honest)
     avg_honest = np.average(honest_chain)
-    print("-> honest chain weight average: {:.3f}".format(avg_honest))
     attacker_nogrind = nogrinding(e,attacker,sim,Kmax,attacker)
     avg_attacker_ng = np.average(attacker_nogrind)
-    print("-> attacker chain weight average no grinding: {:.3f}".format(avg_attacker_ng))
     attacker_grind = grinding(e,attacker,sim,Kmax,null_blocks,headstart)
     avg_attacker_grind = np.average(attacker_grind)
-    print("-> attacker chain average with grinding: {:.3f}".format(avg_attacker_grind))
 
     nogrind_quality = quality_chain(attacker_nogrind,honest_chain)
     nogrind_prob = np.average(nogrind_quality)
-    print("-> probability of success when not grinding: {:.3f}".format(nogrind_prob))
     grinding_quality = quality_chain(attacker_grind,honest_chain)
     grinding_prob = np.average(grinding_quality)
-    print("-> probability of success when grinding: {:.3f}".format(grinding_prob))
+    if log == True:
+        print("Simulation starting with e={}, Kmax={} and null blocks={}".format(e,Kmax,null_blocks))
+        print("-> headstart mode: {}".format(headstart))
+        cpus = mp.cpu_count()
+        print("-> number of CPUs: {}".format(cpus))
+        print("-> honest chain weight average: {:.3f}".format(avg_honest))
+        print("-> attacker chain weight average no grinding: {:.3f}".format(avg_attacker_ng))
+        print("-> attacker chain average with grinding: {:.3f}".format(avg_attacker_grind))
+        print("-> probability of success when not grinding: {:.3f}".format(nogrind_prob))
+        print("-> probability of success when grinding: {:.3f}".format(grinding_prob))
+    return grinding_prob
 
-run()
-run(headstart=True)
+def run_multiple(kmaxes,nulls,es,attackers):
+    print("e,attacker,kmax,null,headstart,prob_success")
+    for kmax in kmaxes:
+        for null in nulls:
+            for e in es:
+                for att in attackers:
+                    fatt = "{:.3f}".format(att)
+                    noheadstart = "{:.3f}".format(run(kmax,null,e,att))
+                    str1 = map(str,[e,fatt,kmax,null] + [False,noheadstart])
+                    print("{}".format(",".join(str1)))
+                    headstart = "{:.3f}".format(run(kmax,null,e,att,headstart=True))
+                    str2 = map(str,[e,fatt,kmax,null] + [True,headstart])
+                    print("{}".format(",".join(str2)))
+                    
+
+
+kmaxes = [5,10,50,100,500,1000]
+run_multiple(kmaxes,[null_blocks],[e],[attacker])
