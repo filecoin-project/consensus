@@ -141,5 +141,5 @@ def run_multiple(kmaxes,nulls,es,attackers):
                     
 
 
-kmaxes = [5,10]
+kmaxes = [5,10,50,100]
 run_multiple(kmaxes,[5],[e],[attacker])
