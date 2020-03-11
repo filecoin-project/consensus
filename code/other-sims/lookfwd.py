@@ -7,10 +7,10 @@ import utils as u
 s = 10000
 e=5
 att=1/3
-rat=1/3
-honest=1-att-rat
+honest=0
+rat=1-att-honest
 # target success rate of the rational player
-rate_success=0.2
+rate_success=0.9
 
 def ratio(e,att,trials=e):
     honest=1-att
@@ -51,7 +51,7 @@ def lookfwd_writeup(e,att,honest):
 # Round 3: two chains:
 #           C1: attacker + honest chain
 #           C2: rational player that mines on top of round 1, bypassing round 2
-def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
+def lookfwd_attack(s, e,att,rat,honest,rate_success):
     print("Attack LOOKFWD computations")
     ## Find the minimum number of blocks that attacker has to keep on the parent
     ## tipset such that rational player is unlikely to mine a heavier chain
@@ -70,6 +70,8 @@ def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
         ## only uses i blocks to mine on from the first round
         ## minimum_inclusion is the minimum number of blocks attacker must
         ## include
+        ## Note that this sim does not include subtle behaviors that account for expected win/loss by miners whose
+        ## blocks were grinded, etc.
         minimum_inclusion = int(exp_round)
         for blocks_kept in range(0,minimum_inclusion):
             round1 = blocks_kept
@@ -78,14 +80,17 @@ def lookfwd_attack(s, e,att,rat,honest,rate_success=0.2):
             print("\t* Attacker number of blocks in chain: {} -> {:.3f} -> {:.3f}".format(round1,round2,round3))
             # minimum number of blocks rational must mine at round 3 to get heavier 
             # chain > round2 + round3 - "diff between round1 and expected # round1"
-            minrat = round2 + round3 - (exp_round - round1)
+            blocks_discarded = exp_round - round1
+            minrat = round2 + round3 - blocks_discarded
             # Pr[rational mines more than minrat] = 1 - Pr[rat mines < min_rat]
             pr = 1 - u.binomial_cdf(int(minrat), s*rat, e/s)
             print("\t  Rational player needs to find >= {:.3f} blocks".format(minrat))
             print("\t  Rational probability of having more blocks: {:.3f}".format(pr))
             if pr < rate_success:
                 return blocks_kept
-        raise Exception("no such numbers!")
+        ## if we reach here, that means there is no drop beyond minimum_inclusion that yields
+        ## rational mining on adv chain
+        return minimum_inclusion
 
     ## minimum number of blocks attacker has to keep
     min_keeping = find_minimum(s,e,att,rat,honest,rate_success)
