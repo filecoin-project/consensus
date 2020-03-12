@@ -96,7 +96,7 @@ func grind_node(node *Node, info *Info) []Node {
 
 			results = append(results, Node{
 				Won:    won,
-				Weight: node.Weight - null + won,
+				Weight: node.Weight - null + won - trial,
 				Slot:   newslot,
 			})
 		}
@@ -133,12 +133,12 @@ func grind(info *Info) []int {
 	return run_sim(info, func() int { return grind_once(info) })
 }
 
-func weight(chain []int) int {
+func weight(chain []int) float64 {
 	sum := 0
 	for _, n := range chain {
 		sum += n
 	}
-	return sum
+	return float64(sum) / float64(len(chain))
 }
 
 func prob_success(attacker, honest []int) float64 {
@@ -152,9 +152,9 @@ func prob_success(attacker, honest []int) float64 {
 }
 
 type SimulResult struct {
-	HonestWeight  int
-	NoGrindWeight int
-	GrindWeight   int
+	HonestWeight  float64
+	NoGrindWeight float64
+	GrindWeight   float64
 	GrindSuccess  float64
 }
 
@@ -179,14 +179,18 @@ func run_multiple(infos ...*Info) {
 	fmt.Printf("e,attacker,kmax,null,honestw,nogrindw,grindingw,prob_success\n")
 	for _, info := range infos {
 		res := run(info)
-		fmt.Printf("%d,%.3f,%d,%d,%d,%d,%d,%.3f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess)
+		fmt.Printf("%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess)
 	}
 }
 
 func main() {
 	infos := []*Info{}
-	for _, kmax := range []int{2, 5, 7, 10, 12} {
-		infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 3, 100))
+	for _, kmax := range []int{2, 5, 6, 7, 8, 9, 10, 11, 12, 13} {
+		if kmax <= 5 {
+			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 1, 1000))
+		} else {
+			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 5, 1000))
+		}
 	}
 	run_multiple(infos...)
 }
