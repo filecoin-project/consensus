@@ -5,7 +5,7 @@ import collections as c
 
 poisson = np.random.poisson
 
-sim=500 #number of simulations
+sim=1000 #number of simulations
 attacker=1/3 # fraction of attacker power
 honest=1-attacker
 e=5
@@ -14,7 +14,6 @@ null_blocks=6#how many "grinds" we allow
 Node = c.namedtuple("Node",['weight','won','slot'])
 
 def nogrinding(e,power,sim,kmax):
-    forks=[]
     def runsim():
         # + 1 to account for round where attack is based off ?
         return sum([poisson(e*power) for slot in range(kmax+1)])
@@ -141,5 +140,5 @@ def run_multiple(kmaxes,nulls,es,attackers,cpus=mp.cpu_count()):
                     
 
 
-kmaxes = [2,5,10,12,14,20,30]
+kmaxes = [2,5,6,7,8,9,10,11]
 run_multiple(kmaxes,[5],[e],[attacker])
