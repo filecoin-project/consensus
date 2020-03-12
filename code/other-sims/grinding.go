@@ -1,10 +1,14 @@
 package main
 
 import (
+	crypto_rand "crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 
-	"github.com/atgjack/prob"
+	xrand "golang.org/x/exp/rand"
+
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type Node struct {
@@ -19,21 +23,32 @@ type Info struct {
 	Sims  int
 	Power float64
 	E     int
-	ph    *prob.Poisson
-	pa    *prob.Poisson
 }
 
+type Distribution interface {
+	Rand() float64
+}
+
+func (i *Info) HonestDistribution() Distribution {
+	return &distuv.Poisson{
+		Lambda: float64(i.E) * (1 - i.Power),
+		Src:    newSeed(),
+	}
+}
+
+func (i *Info) AttackerDistribution() Distribution {
+	return &distuv.Poisson{
+		Lambda: float64(i.E) * (i.Power),
+		Src:    newSeed(),
+	}
+}
 func NewInfo(e int, power float64, kmax, null, sims int) *Info {
-	ph, _ := prob.NewPoisson((1.0 - power) * float64(e))
-	pa, _ := prob.NewPoisson(power * float64(e))
 	return &Info{
 		E:     e,
 		Power: power,
 		Kmax:  kmax,
 		Null:  null,
 		Sims:  sims,
-		ph:    &ph,
-		pa:    &pa,
 	}
 }
 
@@ -41,7 +56,7 @@ func (i *Info) Rate() float64 {
 	return i.Power * float64(i.E)
 }
 
-func run_sim(info *Info, sim func() int) []int {
+func run_sim(info *Info, sim func(Distribution) int, newRand func() Distribution) []int {
 	results := make([]int, info.Sims)
 	numCPUs := runtime.NumCPU()
 	work := make(chan bool, info.Sims)
@@ -49,7 +64,7 @@ func run_sim(info *Info, sim func() int) []int {
 
 	worker := func() {
 		for _ = range work {
-			resultsCh <- sim()
+			resultsCh <- sim(newRand())
 		}
 	}
 	for i := 0; i < numCPUs; i++ {
@@ -66,18 +81,18 @@ func run_sim(info *Info, sim func() int) []int {
 	return results
 }
 
-func nogrinding(info *Info, draw func() float64) []int {
-	onesim := func() int {
+func nogrinding(info *Info, newRand func() Distribution) []int {
+	onesim := func(d Distribution) int {
 		sum := 0
 		for i := 0; i < info.Kmax; i++ {
-			sum += int(draw())
+			sum += int(d.Rand())
 		}
 		return int(sum)
 	}
-	return run_sim(info, onesim)
+	return run_sim(info, onesim, newRand)
 }
 
-func grind_node(node *Node, info *Info) []Node {
+func grind_node(node *Node, info *Info, d Distribution) []Node {
 	if node.Slot >= info.Kmax {
 		return []Node{}
 	}
@@ -89,7 +104,7 @@ func grind_node(node *Node, info *Info) []Node {
 		}
 
 		for trial := 0; trial < node.Won; trial++ {
-			won := int(info.pa.Random())
+			won := int(d.Rand())
 			if won == 0 {
 				continue
 			}
@@ -104,7 +119,7 @@ func grind_node(node *Node, info *Info) []Node {
 	return results
 }
 
-func grind_once(info *Info) int {
+func grind_once(info *Info, d Distribution) int {
 	firstnode := Node{
 		Won:    1,
 		Weight: 0,
@@ -122,7 +137,7 @@ func grind_once(info *Info) int {
 		// run grinding
 		res := []Node{}
 		for _, n := range nodes {
-			res = append(res, grind_node(&n, info)...)
+			res = append(res, grind_node(&n, info, d)...)
 		}
 		nodes = res
 	}
@@ -130,7 +145,7 @@ func grind_once(info *Info) int {
 }
 
 func grind(info *Info) []int {
-	return run_sim(info, func() int { return grind_once(info) })
+	return run_sim(info, func(d Distribution) int { return grind_once(info, d) }, info.AttackerDistribution)
 }
 
 func weight(chain []int) float64 {
@@ -159,8 +174,8 @@ type SimulResult struct {
 }
 
 func run(info *Info) *SimulResult {
-	honest := nogrinding(info, info.ph.Random)
-	attacker_nogrind := nogrinding(info, info.pa.Random)
+	honest := nogrinding(info, info.HonestDistribution)
+	attacker_nogrind := nogrinding(info, info.AttackerDistribution)
 	//succ := prob_success(attacker_nogrind, honest_nogrind)
 	//fmt.Printf("-> attacker's success: %.3f\n", succ)
 
@@ -185,7 +200,7 @@ func run_multiple(infos ...*Info) {
 
 func main() {
 	infos := []*Info{}
-	for _, kmax := range []int{2, 5, 6, 7, 8, 9, 10, 11, 12, 13} {
+	for _, kmax := range []int{2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15} {
 		if kmax <= 5 {
 			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 1, 1000))
 		} else {
@@ -193,4 +208,13 @@ func main() {
 		}
 	}
 	run_multiple(infos...)
+}
+
+func newSeed() xrand.Source {
+	var b [8]byte
+	_, err := crypto_rand.Read(b[:])
+	if err != nil {
+		panic("cannot seed math/rand package with cryptographically secure random number generator")
+	}
+	return xrand.NewSource(uint64(binary.LittleEndian.Uint64(b[:])))
 }
