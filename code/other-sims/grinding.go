@@ -148,12 +148,12 @@ func grind(info *Info) []int {
 	return run_sim(info, func(d Distribution) int { return grind_once(info, d) }, info.AttackerDistribution)
 }
 
-func weight(chain []int) float64 {
+func average_weight(chain []int) float64 {
 	sum := 0
 	for _, n := range chain {
 		sum += n
 	}
-	return float64(sum) / float64(len(chain))
+	return float64(sum)
 }
 
 func prob_success(attacker, honest []int) float64 {
@@ -166,6 +166,11 @@ func prob_success(attacker, honest []int) float64 {
 	return float64(better) / float64(len(attacker))
 }
 
+func expected_honestweight(info *Info) float64 {
+	exp := float64(info.E) * info.Power
+	return exp * float64(info.Kmax)
+}
+
 type SimulResult struct {
 	HonestWeight  float64
 	NoGrindWeight float64
@@ -176,16 +181,16 @@ type SimulResult struct {
 func run(info *Info) *SimulResult {
 	honest := nogrinding(info, info.HonestDistribution)
 	attacker_nogrind := nogrinding(info, info.AttackerDistribution)
-	//succ := prob_success(attacker_nogrind, honest_nogrind)
-	//fmt.Printf("-> attacker's success: %.3f\n", succ)
-
 	attacker_grind := grind(info)
 	succ_grinding := prob_success(attacker_grind, honest)
-	//fmt.Printf("-> attacker grinding success: %.5f\n", succ_grinding)
+	//attack_weight := weight(attacker_grind)
+	//honest_exp_weight := expected_honestweight(info)
+
+	//fmt.Printf("-> attacker weight: %.5f\n", weight(attacker_grind))
 	return &SimulResult{
-		HonestWeight:  weight(honest),
-		NoGrindWeight: weight(attacker_nogrind),
-		GrindWeight:   weight(attacker_grind),
+		HonestWeight:  average_weight(honest),
+		NoGrindWeight: average_weight(attacker_nogrind),
+		GrindWeight:   average_weight(attacker_grind),
 		GrindSuccess:  succ_grinding,
 	}
 }
@@ -194,17 +199,19 @@ func run_multiple(infos ...*Info) {
 	fmt.Printf("e,attacker,kmax,null,honestw,nogrindw,grindingw,prob_success\n")
 	for _, info := range infos {
 		res := run(info)
-		fmt.Printf("%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess)
+		fmt.Printf("%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.8f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess)
 	}
 }
 
 func main() {
 	infos := []*Info{}
+	power := 1.0 / 3.0
+	//power := 1.0 / 10.0
 	for _, kmax := range []int{2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15} {
 		if kmax <= 5 {
-			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 1, 1000))
+			infos = append(infos, NewInfo(5, power, kmax, 1, 1))
 		} else {
-			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 5, 1000))
+			infos = append(infos, NewInfo(5, power, kmax, 5, 1))
 		}
 	}
 	run_multiple(infos...)

@@ -4,7 +4,7 @@ from scipy.stats import binom
 
 # User Params
 k = 10000 # number of epochs
-alpha = .3
+alpha = 0.1
 e = 5.0
 negl = 2**-5
 numSims = 1000
