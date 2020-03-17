@@ -13,9 +13,7 @@ import utils as u
 n=100
 att=n*(1.0/3.0)
 hon=n - att
-# 40 slots of 100ms of those
 T = 80
-# 500ms deadline before is fine
 delay = 10
 pr_node = delay / T
 target = int(0.5 * hon)
