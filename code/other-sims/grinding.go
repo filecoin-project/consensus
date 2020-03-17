@@ -111,7 +111,7 @@ func grind_node(node *Node, info *Info, d Distribution) []Node {
 
 			results = append(results, Node{
 				Won:    won,
-				Weight: node.Weight - null + won - trial,
+				Weight: node.Weight + won - trial,
 				Slot:   newslot,
 			})
 		}
