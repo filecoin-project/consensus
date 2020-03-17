@@ -122,8 +122,8 @@ def default(prob=pr_sj):
     # number of nodes in total
     n = 50
     info['nodes']=n
-    info['honests']=1/3 * n
-    info['attacker']=(1-1/3) * n
+    info['attacker']=1/3 * n
+    info['honests']= n - info['attacker']
     # there are two viable strategies:
     # 1. send to only the minimum number of nodes such that it reaches 50% so
     # attacker will mine next round on its own block

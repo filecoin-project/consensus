@@ -20,7 +20,7 @@ import utils
 
 
 s=100000
-att=.3
+att=0.1
 honest=1-att
 e=5
 
@@ -58,7 +58,7 @@ def compute(prob_function):
             sum_pr += total
     print("max probability: {}".format(max_pr))
     print("sum probability: {}".format(sum_pr))
-    print("chain quality reduction: {}".format(sum_pr*0.5))
+    print("chain quality reduction: {}".format(sum_pr/3))
 
 print(" --- using poisson approximation ---")
 compute(poisson)

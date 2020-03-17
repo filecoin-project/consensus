@@ -144,16 +144,37 @@ func grind_once(info *Info, d Distribution) int {
 	return max_weight
 }
 
-func grind(info *Info) []int {
-	return run_sim(info, func(d Distribution) int { return grind_once(info, d) }, info.AttackerDistribution)
+type GrindingResult struct {
+	Weights    []int
+	Success    []bool
+	TotalTrial int
 }
 
-func weight(chain []int) float64 {
+func grind(info *Info) *GrindingResult {
+	weights := run_sim(info, func(d Distribution) int { return grind_once(info, d) }, info.AttackerDistribution)
+	exp_honest := float64(info.E) * float64((1 - info.Power))
+	total_exp_honest := int(exp_honest * float64(info.Kmax))
+	success := make([]bool, info.Sims)
+	total := 0
+	for i, w := range weights {
+		if w >= total_exp_honest {
+			success[i] = true
+			total++
+		}
+	}
+	return &GrindingResult{
+		Weights:    weights,
+		Success:    success,
+		TotalTrial: total,
+	}
+}
+
+func weight(simuls []int, nruns int) float64 {
 	sum := 0
-	for _, n := range chain {
+	for _, n := range simuls {
 		sum += n
 	}
-	return float64(sum) / float64(len(chain))
+	return float64(sum) / float64(nruns)
 }
 
 func prob_success(attacker, honest []int) float64 {
@@ -166,45 +187,72 @@ func prob_success(attacker, honest []int) float64 {
 	return float64(better) / float64(len(attacker))
 }
 
+func prob_success_smart(att *GrindingResult, honest []int) float64 {
+	better := 0
+	for i := 0; i < len(att.Weights); i++ {
+		if !att.Success[i] {
+			continue
+		}
+		if att.Weights[i] >= honest[i] {
+			better++
+		}
+	}
+	return float64(better) / float64(att.TotalTrial)
+}
+
 type SimulResult struct {
-	HonestWeight  float64
-	NoGrindWeight float64
-	GrindWeight   float64
-	GrindSuccess  float64
+	HonestWeight            float64
+	NoGrindWeight           float64
+	GrindWeight             float64
+	GrindSuccess            float64
+	ExpectedAdditionalBlock float64
+	ExpectedReward          float64
+	SmartGrinding           float64
+	SmartPercTrial          float64
+}
+
+func (s *SimulResult) ComputeExpectedReward() {
+	extraBlock := s.GrindWeight - s.NoGrindWeight
+	exp_extra := s.GrindSuccess * extraBlock
+	s.ExpectedAdditionalBlock = exp_extra
+	ratio := (s.NoGrindWeight + exp_extra) / s.NoGrindWeight
+	s.ExpectedReward = ratio
 }
 
 func run(info *Info) *SimulResult {
 	honest := nogrinding(info, info.HonestDistribution)
 	attacker_nogrind := nogrinding(info, info.AttackerDistribution)
-	//succ := prob_success(attacker_nogrind, honest_nogrind)
-	//fmt.Printf("-> attacker's success: %.3f\n", succ)
-
 	attacker_grind := grind(info)
-	succ_grinding := prob_success(attacker_grind, honest)
-	//fmt.Printf("-> attacker grinding success: %.5f\n", succ_grinding)
-	return &SimulResult{
-		HonestWeight:  weight(honest),
-		NoGrindWeight: weight(attacker_nogrind),
-		GrindWeight:   weight(attacker_grind),
-		GrindSuccess:  succ_grinding,
+	succ_grinding := prob_success(attacker_grind.Weights, honest)
+	smart_grinding := prob_success_smart(attacker_grind, honest)
+	s := &SimulResult{
+		HonestWeight:   weight(honest, info.Sims),
+		NoGrindWeight:  weight(attacker_nogrind, info.Sims),
+		GrindWeight:    weight(attacker_grind.Weights, info.Sims),
+		GrindSuccess:   succ_grinding,
+		SmartGrinding:  smart_grinding,
+		SmartPercTrial: float64(attacker_grind.TotalTrial) / float64(info.Sims),
 	}
+	s.ComputeExpectedReward()
+	return s
 }
 
 func run_multiple(infos ...*Info) {
-	fmt.Printf("e,attacker,kmax,null,honestw,nogrindw,grindingw,prob_success\n")
+	fmt.Printf("e,attacker,kmax,null,honestw,nogrindw,grindingw,prob_success,exp_additional_block,reward_advantage,smart_prob_success,smart_perc_trial\n")
 	for _, info := range infos {
 		res := run(info)
-		fmt.Printf("%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess)
+		fmt.Printf("%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", info.E, info.Power, info.Kmax, info.Null, res.HonestWeight, res.NoGrindWeight, res.GrindWeight, res.GrindSuccess, res.ExpectedAdditionalBlock, res.ExpectedReward, res.SmartGrinding, res.SmartPercTrial)
 	}
 }
 
 func main() {
 	infos := []*Info{}
+	power := 1.0 / 3.0
 	for _, kmax := range []int{2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15} {
 		if kmax <= 5 {
-			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 1, 1000))
+			infos = append(infos, NewInfo(5, power, kmax, 1, 1000))
 		} else {
-			infos = append(infos, NewInfo(5, 1.0/3.0, kmax, 5, 1000))
+			infos = append(infos, NewInfo(5, power, kmax, 5, 1000))
 		}
 	}
 	run_multiple(infos...)
