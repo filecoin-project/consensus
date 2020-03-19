@@ -121,15 +121,15 @@ def grindWithoutHS():
             advWin = tipset - trial + grindRound
             
             # attack success -- we assume better network connectivity from attacker
-            if advWin >= honWins:
+            if advWin > honWins:
                 # keep the best - that's how much you can win more
-                if grindRound > maxGrindedBlock:
+                if grindRound >= maxGrindedBlock:
                     maxGrindedBlock = grindRound
             # attacker tried attack but it failed
 
-        # adv ran the attack
+        # adv ran the attack -- if didn't work, still gets ca2 blocks by mining honestly.
         blocksGrind.append(ca + maxGrindedBlock)
-        # alternatively would have won ca2
+        # alternatively would have won ca2 regardless
         blocksNoGrind.append(ca+ca2)
 
     # all blocks that the adversary gets (or could have had) without  grinding
