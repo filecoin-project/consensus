@@ -6,6 +6,10 @@ import math
 import json
 import calendar
 import time
+from scipy.stats import binom
+import operator as op
+from functools import reduce
+
 
 print "Takes around 25 mins..."
 # only set to True if running for a single expected_blocks_per_round
@@ -13,37 +17,49 @@ store_output = True
 #####
 ## System level params
 #####
-lookbacks = [10] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
-alphas = []
+lookbacks = [0] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
+alphas = [.01, .1, .3, .45]
 # alphas = [k/100.0 for k in range(2, 52, 2)]
 rounds_back = []
 # rounds_back = range(5, 105, 10)
 total_qual_ec = []
 total_qual_nohs = []
 total_qual_nots = []
-miners = 10000
+miners = 1000
 sim_rounds = 5000
-e_blocks_per_round = [1] #[x + 1 for x in range(10)]
+e_blocks_per_round = [x + 1 for x in range(5)] + [x for x in range(10, 110, 10)]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]
 
 ## Model complex weighting fn? Based on observable wt fn params
-wt_fn = True
+wt_fn = False
 # wt_fn = True
 powerAtStart = 5000 # in PBs
 powerIncreasePerDay = .025 # 2.5% per day for double power in 28 days (1,250 TB a day)
 # assuming a 30 sec block time and uniform increase
 RDS_PER_DAY = 86400./30
 powerIncreasePerRound = powerIncreasePerDay/RDS_PER_DAY
-wPunishFactor = .708
 wBlocksFactorTransitionConst = 350
 wStartPunish = 5
-wBlocksFactor = "350*(log2((1-alpha)*networkSize(r))/(1-alpha))"
+wBlocksFactor = "wBlocksFactorTransitionCost*(log2((1-alpha)*networkSize(r))/(1-alpha))"
+wForkFactor = "1 for k > E[X] - stddev[X]; CDF(X, k) otherwise"
 
 #####
 ## Helper fns
 #####
+
+def cdf(k, n, p):
+    _sum = 0
+    for i in range(k + 1):
+        _sum += ncr(n, i)*(p**i)*((1-p)**(n-i))
+    return _sum
+
+def ncr(n, r):
+    r = min(r, n-r)
+    numer = reduce(op.mul, range(n, n-r, -1), 1)
+    denom = reduce(op.mul, range(1, r+1), 1)
+    return numer / denom
 
 def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
@@ -62,7 +78,7 @@ def confidence_of_k(target, array):
     _sum = 0.0
     for idx, i in enumerate(array):
         # attack will fail
-    	if i < target:
+        if i < target:
             _sum += 1
     # attack succeeds
     return float(len(array) - _sum) / len(array) 
@@ -100,6 +116,8 @@ def should_launch_attack(_type, start, advCount, honCount):
         # for NOTS, no need to check either: you'll be tied at worst, just launch attack anyways
         return advCount > 0
 
+
+
 def get_settings():
     params = {}
     params["lookbacks"] = lookbacks
@@ -113,7 +131,7 @@ def get_settings():
             "enabled": wt_fn,
             "powerAtStart": powerAtStart,
             "powerIncreasePerRound": powerIncreasePerRound,
-            "wPunishFactor": wPunishFactor,
+            "wForkFactor": wForkFactor,
             "wStartPunish": wStartPunish,
             "wBlocksFactor": wBlocksFactor
             }
@@ -161,17 +179,29 @@ class MonteCarlo:
         self.lengths = {k: [] for k in sim_to_run}
         self.launched = {k: [] for k in sim_to_run}
         self.quality = {k: [] for k in sim_to_run}
+        blocksStdDev = math.sqrt(self.e*(1-self.p))
+        self.forkFactorCutoff = self.e - blocksStdDev
+        self.CDFMemoization = {}
+
+    def wForkFactor(self, blocksR):
+        if blocksR > self.forkFactorCutoff:
+            return 1
+        # super inefficient
+        # return binom.cdf(blocksR, self.e*miners, self.p)
+        if blocksR not in self.CDFMemoization.keys():
+            self.CDFMemoization[blocksR] = cdf(blocksR, self.e*miners, self.p)
+        return self.CDFMemoization[blocksR]
+
+    def wBlocksFactor(self, power):
+        return  wBlocksFactorTransitionConst*(math.log((1.0-self.alpha)*power, 2)/(1.0-self.alpha))
+    
+    def wPowerFactor(self, power):
+        return math.log(power, 2)
 
     def new_wt(self, old_wt, numBlocks, power, nulls, supp=0):
         # supp will be added weight for eg headstart
         if wt_fn:
-            # edge cases at beg of chain + actual condition, skip last one
-            if nulls >= wStartPunish:
-                wNullFactor = wPunishFactor ** nulls
-            else:
-                wNullFactor = 1.
-            wBlocksFactor = wBlocksFactorTransitionConst*(math.log((1-self.alpha)*power, 2)/(1-self.alpha))
-            return old_wt + wNullFactor*(math.log(power, 2) + wBlocksFactor*(numBlocks + supp))
+            return old_wt + self.wForkFactor(numBlocks)*(self.wPowerFactor(power) + self.wBlocksFactor(power)*(numBlocks + supp))
         else:
             return old_wt + numBlocks + supp
 
@@ -192,8 +222,8 @@ class MonteCarlo:
                 self.lb = lb
                 
                 for alpha in alphas:
-                    self.reset_sim()
                     self.alpha = alpha
+                    self.reset_sim()
                     for i in range(num_sims): 
                         for sim in sim_to_run:
                             self.run_sim(sim)
