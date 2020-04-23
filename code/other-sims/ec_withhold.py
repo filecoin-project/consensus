@@ -18,7 +18,7 @@ store_output = True
 ## System level params
 #####
 lookbacks = [0] # [k for k in range(0, 11)] + [k for k in range(15, 105, 5)]
-alphas = [.01, .1, .3, .45]
+alphas = [.1, .33]
 # alphas = [k/100.0 for k in range(2, 52, 2)]
 rounds_back = []
 # rounds_back = range(5, 105, 10)
@@ -27,7 +27,7 @@ total_qual_nohs = []
 total_qual_nots = []
 miners = 1000
 sim_rounds = 5000
-e_blocks_per_round = [x + 1 for x in range(5)] + [x for x in range(10, 110, 10)]
+e_blocks_per_round = [1, 5]
 num_sims = 10000
 # conf denom needs to be no bigger than number of sims (otherwise can't get that precision)
 target_conf = [.0001]

@@ -9,13 +9,17 @@ sims = 10000
 e=5.0
 att=.33
 rat=1-att
-miners = 10000
+miners = 1000
 ratMin = rat * miners
 attMin = att * miners
 p = e/miners
 
-s = 2**-10
+s = 2**-30
 
+# multiDraw is not a good approximation since it redraws the full chain
+# at every epoch of the attempted catchup. This is tantamount to the 
+# adversary redrawing every past epoch at every epoch, which is not the 
+# right model and increases their chances (since more entropy)
 def multiDraw():
     caughtUp = 0
     maxDistToCU = 0
@@ -44,14 +48,21 @@ def multiDraw():
 def singleDraw():
     caughtUp = 0
     maxDistToCU = 0
+    CUDists = []
+
     for _ in range(sims):
+        # count rat blocks found in null adversarial period
+        ratAdvance = 0
+        # ratAdvance = np.random.binomial(ratMin/2, p, 1)[0]
+
         maxCatchup = 250
         ratBlocks = np.random.binomial(ratMin, p, maxCatchup)
         advBlocks = np.random.binomial(attMin, p, maxCatchup)
         for distCatchup in range(1, maxCatchup):
-            if sum(advBlocks[:distCatchup]) >= sum(ratBlocks[:distCatchup]):
+            if sum(advBlocks[:distCatchup]) >= sum(ratBlocks[:distCatchup]) + ratAdvance:
                 caughtUp += 1
                 maxDistToCU = max(distCatchup, maxDistToCU)
+                CUDists.append(distCatchup)
                 break
     
     print caughtUp
@@ -64,7 +75,11 @@ def singleDraw():
     
     print "secure after " + str(r) + " cycles of at most " + str(maxDistToCU) + " epochs"
 
-multiDraw()
+    CUDists.sort(reverse=True)
+    avg = np.average(CUDists[:r])
+
+    print "looking at worst " + str(r) + " dists, we can take " + str(avg)
+
 singleDraw()
 
 
