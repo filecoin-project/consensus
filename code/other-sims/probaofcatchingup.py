@@ -6,16 +6,16 @@ nh=67
 na=33
 ntot=na+nh
 heights=range(100,101,50)
-p=15./float(1*ntot)
+p=5./float(1*ntot)
 
-sim=100000
+sim=1000000
 
 ec =[]
 praos = []
 
 start_time = time.time()
 
-
+hs=1
 longestfork =[]
 for height in heights:
 	win_ec = 0
@@ -37,8 +37,26 @@ for height in heights:
 			if ind == height:
 				win =0
 				break
+		j=1
+		if win == 0 and hs and ca[j-1]>1 :
+			sumh =  ch[j]/2+ch[j+1]#at round j the power of honest miners is still split between two chains
+						#at round j+1 it goes all back to one chain
+			
+			suma = ca[j-1]-1 +ca[j+1]#the adversary used all the blocks it withheld in period j-1
+			#(all of them minus 1 that it used to maintain the forks)
+			
+			ind = j+2 
+			while sumh>suma and ind<height: #as soon as adversary catches up with honest chain, assume
+			#it can create a fork again
+				sumh+=ch[ind]
+				suma+=ca[ind]
+				ind+=1
+				if ind == height and sumh>suma: #we have reach the end of the attack
+			#and adversary has not catch up
+					win =0
+					break
 		if ind <height:
-			#win = 1
+			win = 1
 			longestfork.append(ind)
 
 		if win ==1:
@@ -48,7 +66,7 @@ for height in heights:
 	ec.append(float(win_ec)/float(sim))
 longestfork.sort()
 
-print ec, np.average(longestfork), np.median(longestfork), np.average(longestfork[-21:]),max(longestfork)
+print ec, np.average(longestfork), np.median(longestfork), np.average(longestfork[-33:]),max(longestfork)
 
 
 
