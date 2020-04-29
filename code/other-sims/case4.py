@@ -6,12 +6,15 @@ nh=67
 na=33
 ntot=na+nh
 heights=range(250,251,10)
-p=5./float(1*ntot)
+e=5
+p=float(e)/float(1*ntot)
 
-sim=1000000
+sim=10000000000
 
 ec =[]
-
+num=1
+if e==1: num=77
+if e==5: num=54
 
 start_time = time.time()
 
@@ -53,8 +56,17 @@ for height in heights: #the adversary tries to keep maintaining two chain of sam
 			longestfork.append(j)
 	#print np.average(longestfork)
 	ec.append(float(win_ec)/float(sim))
-longestfork.sort()
+# longestfork.sort()
 
-print ec,np.average(longestfork), np.median(longestfork),max(longestfork), sum(longestfork[-54:])
+# print ec,np.average(longestfork), np.median(longestfork),max(longestfork), sum(longestfork[-54:])
+
+#before sorting, we group them by groups of num
+stop = int(floor(sim/num)*num) #need to stop before the end of the longest fork
+#if it is not a multiple of num
+
+groupedfork=[ sum(longestfork[x:x+num]) for x in range(0, stop, num)]
+
+
+print ec, np.average(groupedfork), np.median(groupedfork), max(groupedfork), len(groupedfork)
 
 print("--- %s seconds ---" % (time.time() - start_time))
