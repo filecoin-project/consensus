@@ -10,7 +10,7 @@ ec =[]
 num=1
 e = 5
 print "e = ", e
-Num_of_sim_per_proc = 100
+Num_of_sim_per_proc = 100000
 
 start_time = time.time()
 
@@ -25,7 +25,7 @@ def simu(sim):
 	#attack will not last 250 except with negligible probabilities
 	p=float(e)/float(1*ntot)
 	if e==1: num=77
-	if e==5: num=54
+	if e==5: num=100
 	#num corresponds to the number of iterations of the attack that the adversary can perform
 	#(calculated previously)
 	win_ec = 0
@@ -40,19 +40,8 @@ def simu(sim):
 		w_h = 0
 		w_a = 0
 		j=0
-		while ca[j]>0 and j<height: #while adversary is elected it performs epoch boundary
-			#flip a coin to determine if adversarial or honest block is winning is winning
-			pprime=float(ca[j])/float(ca[j]+ch[j])
-			coin = np.random.binomial(1, pprime, 1)
-			if ch[j]==0 or coin:
-			#adversary is winning
-			#it can create many different blocks with the "winning"
-			#ticket (to check with henri) so each chain is increased by one only
-				w_h+=1
-			else:	#if honest is winning 
-			#then each honest chain has a weight +2
-			#(assuming  the honest power is completely spread) 
-				w_h+=2
+		while ca[j]>0 and j<height: 
+			w_h+=1#worse case scenario, only one block is added to the honest chain
 			w_a+=ca[j]#adv adds all blocks possible to its chain
 			j+=1
 		if w_a>=w_h and w_a>0:
@@ -66,7 +55,7 @@ def simu(sim):
 
 pool = mp.Pool(mp.cpu_count())
 print mp.cpu_count()
-results = pool.map(simu, [100]*mp.cpu_count())
+results = pool.map(simu, [Num_of_sim_per_proc]*mp.cpu_count())
 pool.close()
 
 print results, max(results)
