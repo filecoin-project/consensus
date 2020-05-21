@@ -7,7 +7,7 @@ nh=67
 na=33
 ntot=na+nh
 heights=range(250,251,10)
-e=5
+e=1
 p=float(e)/float(1*ntot)
 
 sim=1000000

@@ -8,7 +8,7 @@ import multiprocessing as mp
 
 ec =[]
 num=1
-e = 5
+e = 1
 print "e = ", e
 Num_of_sim_per_proc = 100000
 
@@ -24,7 +24,7 @@ def simu(sim):
 	height = 250#the height is chosen to avoid infinite loop, in practice a selfish mining
 	#attack will not last 250 except with negligible probabilities
 	p=float(e)/float(1*ntot)
-	if e==1: num=77
+	if e==1: num=17
 	if e==5: num=100
 	#num corresponds to the number of iterations of the attack that the adversary can perform
 	#(calculated previously)
