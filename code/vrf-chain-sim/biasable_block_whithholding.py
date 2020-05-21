@@ -2,7 +2,7 @@ import numpy as np
 import time
 from math import floor
 import multiprocessing as mp
-import random
+
 #Initialize parameters
 Num_of_sim_per_proc = 10
 start_time = time.time()
@@ -11,17 +11,15 @@ alpha = 0.33
 ntot = 1000
 na = int(ntot*alpha)
 nh = ntot - na
-height = 10 #height of the attack
+height = 11 #height of the attack
 p=float(e)/float(1*ntot)
 unrealistic = 0 #do we want to compute the worst case or just the synchronous case?
 
 
-def new_node(n,slot,weight,parent=0):
+def new_node(slot,weight):
     return {
-        'n': n,
         'slot': slot,
-        'weight':weight,
-        'parent':parent
+        'weight':weight
     }
 
 
@@ -30,16 +28,13 @@ def count_possibilities(vec,num):#given a vector of number of election won at ea
 	if num<sum(vec):
 		return 0
 	else:
-		idx = random.randrange(2**30)
-		list_of_nodes  = [[new_node(idx,-1,0,-1)]]
+		list_of_nodes  = [[new_node(-1,0,)]]
 		for ind,v in enumerate(vec):
 			list_of_nodes_at_slot_ind = []
 			for i in range(v+1):
 				for node in list_of_nodes[ind]: #take all the nodes from slot before i.e. ind-1
 					weight = node['weight'] + i
-					parent = node['n']
-					idx = random.randrange(2**30)
-					nnode = new_node(idx,ind,weight,parent)
+					nnode = new_node(ind,weight)
 					list_of_nodes_at_slot_ind.append(nnode)
 			list_of_nodes.append(list_of_nodes_at_slot_ind)
 		ct = 0
@@ -61,7 +56,6 @@ def simu(sim):
 	# 2. the synchronous case where the honest chain is never split (+ our adversary does not perform an epoch boundary)
 	wh_sync = [0]
 	# we could take the average of both depending on our threat model
-
 	wa = []
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height)
