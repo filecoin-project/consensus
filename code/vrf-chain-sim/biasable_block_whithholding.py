@@ -2,7 +2,7 @@ import numpy as np
 import time
 from math import floor
 import multiprocessing as mp
-
+import scipy.special
 #Initialize parameters
 Num_of_sim_per_proc = 10
 start_time = time.time()
@@ -57,6 +57,7 @@ def simu(sim):
 	wh_sync = [0]
 	# we could take the average of both depending on our threat model
 	wa = []
+	
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height)
 		ca = np.random.binomial(na, p, height)
