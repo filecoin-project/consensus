@@ -4,7 +4,7 @@ from math import floor
 import multiprocessing as mp
 import scipy.special
 #Initialize parameters
-Num_of_sim_per_proc = 10
+Num_of_sim_per_proc = 10000
 height = 11 #height of the attack
 
 start_time = time.time()
@@ -13,39 +13,37 @@ alpha = 0.33
 ntot = 1000
 na = int(ntot*alpha)
 nh = ntot - na
-
 p=float(e)/float(1*ntot)
 unrealistic = 0 #do we want to compute the worst case or just the synchronous case?
 
 
-def new_node(slot,weight):
-    return {
-        'slot': slot,
-        'weight':weight
-    }
-
-
-def count_possibilities(vec,num):#given a vector of number of election won at each slot, how many
-# "situations" gives a chain weight (i.e. sum of blocks) higher than some number
-	if num>sum(vec):
+def count_possibilities(ca,num):
+	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
+	if num>sum(ca):
 		return 0
 	else:
-		list_of_nodes  = [[new_node(-1,0,)]]
-		for ind,v in enumerate(vec):
-			list_of_nodes_at_slot_ind = []
-			for i in range(v+1):
-				for node in list_of_nodes[ind]: #take all the nodes from slot before i.e. ind-1
-					weight = node['weight'] + i
-					nnode = new_node(ind,weight)
-					list_of_nodes_at_slot_ind.append(nnode)
-			list_of_nodes.append(list_of_nodes_at_slot_ind)
+		s=sum(ca)
+		ca = [x for x in ca if x != 0]
+		n=len(ca)
+		l1 = [s-i for i in range(ca[-1]+1)]
+		l = np.array(l1.copy())
+		for j in range(1,n):
+			for i in range(1,ca[-1-j]+1):
+				ll = np.array(l1)-i
+				l=np.concatenate((l,ll),axis =0)
+			l1 = l.copy()
+		# dict_of_weight = {i: 0 for i in range(sum(ca)+1)}
+		# for elt in l:
+		# 	dict_of_weight[elt]+=1
+		# return dict_of_weight
+		assert len(l) == np.prod(np.array(ca)+1)
 		ct = 0
-		for node in list_of_nodes[-1]:
-			if node['weight']>=num:
+		for node in l:
+			if node>=num:
 				ct+=1
-
+		# if ct>10:
+		# 	print(ca,num,l,len(l))
 		return ct
-
 
 
 
@@ -59,18 +57,16 @@ def simu(sim):
 	wh_sync = [0]
 	# we could take the average of both depending on our threat model
 	wa = []
-	
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height)
-		ca = np.random.binomial(na, p, height)
-		ca = np.array(ca)+1 # we add one to consider the option of "null blocks" 
+		ca = np.random.binomial(na, p, height) 
 		h_sync = sum(ch)
 		a_max = sum(ca) #heaviest chain that adversary can create
 		if unrealistic: h_unrealistic = sum([1 if ch[i]>0 else 0 for i in range(len(ch))])
 		#diff = a_max-h_sync
 		winners = count_possibilities(ca,h_sync)
 		wa.append(winners)
-	return max(wa)
+	return np.max(wa)
 
 
 

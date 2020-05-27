@@ -1,20 +1,26 @@
+import multiprocessing as mp
 import numpy as np 
+import time
 
 nh=66667
 na=33333
 ntot=na+nh
-heights=[20]
+height=50
 e=5.
 p=e/float(1*ntot)
 
-sim=1000000
 
 ec =[]
 praos = []
+print "e = ", e
+Num_of_sim_per_proc = 100000
 
-###### Simple block withholding with headstart
+start_time = time.time()
 
-for height in heights: #try different height to get the probability of success of each attack
+# This script simulates the worst length of n consecutive "small headstart" attacks (case 3)
+
+
+def simu(sim):
 	win_ec = 0
 	#win_praos = 0
 	for i in range(sim):
@@ -33,7 +39,16 @@ for height in heights: #try different height to get the probability of success o
 		if w_a>=w_h: win_ec+=1
 		#if wpraos_a>=wpraos_h: win_praos+=1
 	#print win_ec, win_praos
-	ec.append(float(win_ec)/float(sim))
+	return float(win_ec)/float(sim)
 	#praos.append(float(win_praos)/float(sim))
 
-print(ec, praos)
+
+#we rune the simulations in parallel:
+pool = mp.Pool(mp.cpu_count())
+print mp.cpu_count()
+results = pool.map(simu, [Num_of_sim_per_proc]*mp.cpu_count())
+pool.close()
+
+
+print results, np.average(results)
+print("--- %s seconds ---" % (time.time() - start_time))

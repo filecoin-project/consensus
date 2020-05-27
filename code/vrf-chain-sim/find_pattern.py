@@ -96,6 +96,17 @@ def count_n5(ca):
 	return num
 
 def count_k(k,ca):
+	#n_i = len([x for x in ca if x >= k])
+	n = lambda i: len([x for x in ca if x >= i])
+	n1 = n(1)
+	#sqr_fun = lambda x: x * x
+	#n(i)
+	num = n(k)+scipy.special.binom(n1,k)
+	for j in range(1,k-1):
+		num+= n(k-j)*scipy.special.binom(n1-1,j)
+	return num
+
+
 
 
 def count_n4(ca):
@@ -129,7 +140,7 @@ def simu(sim):
 		wa.append(winners)
 		#ca = np.array(ca)+1
 		#tot = np.prod(ca)
-	return wa, count_n4(ca), count_n5(ca)
+	return  wa, count_n2(ca), count_k(2,ca), count_n3(ca), count_k(3,ca),count_n4(ca), count_k(4,ca)
 
 
 
