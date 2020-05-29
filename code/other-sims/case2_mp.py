@@ -5,7 +5,7 @@ import time
 nh=66667
 na=33333
 ntot=na+nh
-height=50
+height=100
 e=5.
 p=e/float(1*ntot)
 
@@ -13,7 +13,7 @@ p=e/float(1*ntot)
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 100000
+Num_of_sim_per_proc = 100000000
 
 start_time = time.time()
 

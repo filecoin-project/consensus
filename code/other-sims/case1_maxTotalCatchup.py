@@ -12,13 +12,18 @@ na=33
 ntot=na+nh
 e=5
 print "e = ", e
-Num_of_sim_per_proc = 100
+Num_of_sim_per_proc = 100000
 p=float(e)/float(ntot)
+min_length=10
 
+## Takes the number of cycles num and return the worst TotalCatchup
+## of num consecutives catchup (of length at least min_length)
 
 ec =[]
 praos = []
-
+### Put NumCycle here
+if e==5: num=4 
+if e==1: num=81 #number of allowed consecutive attacks computed previously
 start_time = time.time()
 height=150#the height is chosen to avoid infinite loop, in practice a selfish mining
 	#attack will not last 150 except with negligible probabilities
@@ -31,8 +36,7 @@ def simu(sim):
 		ch = np.random.binomial(nh, p, height)
 		ca = np.random.binomial(na, p, height)
 		# result of flipping a coin nha times, tested height times.
-		if e==5: num=30 
-		if e==1: num=81 #number of allowed consecutive attacks computed previously
+
 		j=0
 		win =1
 		sumh = ch[0]#this is the begining of the selfish mining 
@@ -45,7 +49,7 @@ def simu(sim):
 			if ind == height:#if adversary hasn't catch up in time, it loses
 				win =0
 				break
-		if ind <height:
+		if ind <height and ind>=min_length:
 			#win = 1
 			longestfork.append(ind)
 	stop = int(floor(sim/num)*num) #need to stop before the end of the longest fork

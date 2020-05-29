@@ -1,6 +1,6 @@
 import numpy as np 
 import time
-from math import floor
+from math import floor, log
 
 nh=67
 na=33
@@ -8,7 +8,8 @@ ntot=na+nh
 heights=range(100,101,50)
 p=5./float(1*ntot)
 
-sim=1000000
+sim=10000
+min_length=10
 
 ec =[]
 praos = []
@@ -56,11 +57,11 @@ for height in heights:
 					win =0
 					break
 		if ind <height:
-			win = 1
+			if ind>=min_length: win = 1
 			longestfork.append(ind)
 
 		if win ==1:
-			win_ec+=1
+			if ind>= min_length: win_ec+=1
 			longestfork.append(j)
 	#print np.average(longestfork)
 	ec.append(float(win_ec)/float(sim))
@@ -68,8 +69,8 @@ longestfork.sort()
 
 print ec, np.average(longestfork), np.median(longestfork), np.average(longestfork[-33:]),max(longestfork)
 
-
-
+n = log(2**-30)/log(ec[0])
+print(n)
 print("--- %s seconds ---" % (time.time() - start_time))
 
 
