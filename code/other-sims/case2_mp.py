@@ -5,7 +5,7 @@ import time
 nh=66667
 na=33333
 ntot=na+nh
-height=100
+height=20
 e=5.
 p=e/float(1*ntot)
 
@@ -13,7 +13,7 @@ p=e/float(1*ntot)
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 100000000
+Num_of_sim_per_proc = 10000
 
 start_time = time.time()
 
@@ -23,6 +23,7 @@ start_time = time.time()
 def simu(sim):
 	win_ec = 0
 	#win_praos = 0
+	np.random.seed()
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height)
 		ca = np.random.binomial(na, p, height)

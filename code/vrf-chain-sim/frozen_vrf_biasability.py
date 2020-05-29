@@ -16,14 +16,25 @@ nh = ntot - na
 p=float(e)/float(1*ntot)
 unrealistic = 0 #do we want to compute the worst case or just the synchronous case?
 
+#number of blocks after which we update the vrf chain
+frozen = 1
+
 
 def count_possibilities(ca,num):
 	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
+	#print("num = ",num, "sum ca inside fct = ", sum(ca))
 	if num>sum(ca):
 		return 0
 	else:
 		s=sum(ca)
-		ca = [x for x in ca if x != 0]
+		vrf_ca = [ca[i] for i in range(len(ca)) if i%frozen == 0]
+		#vrf_ca is the vector of all the blocks that count for leader election
+
+		ss= sum([ca[i] for i in range(len(ca)) if i%frozen != 0])
+		# the adversary includes in its chain all the blocks that do not count
+		# for the ticket chain, thus we add these blocks to the weight
+		ca = [x for x in vrf_ca if x != 0]
+		# ca is now the list of all blocks that count for vrf
 		n=len(ca)
 		l1 = [s-i for i in range(ca[-1]+1) if s-i>=num]
 		l = np.array(l1.copy())
@@ -55,24 +66,28 @@ def simu(sim):
 	wh_sync = [0]
 	# we could take the average of both depending on our threat model
 	wa = []
+	nn =0
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height)
 		ca = np.random.binomial(na, p, height) 
+		#print("ca = ",ca, " sum ca with HS = ", sum(ca)+ch[0] , "sum ch",sum(ch))
 		h_sync = sum(ch)
-		a_max = sum(ca) #heaviest chain that adversary can create
 		if unrealistic: h_unrealistic = sum([1 if ch[i]>0 else 0 for i in range(len(ch))])
 		#diff = a_max-h_sync
 		new_ca = np.concatenate(([ca[0]+ch[0]],ca[1:]),axis =0)
 		winners = count_possibilities(new_ca,h_sync)
+	# count number of times where adversary could reset
 		wa.append(winners)
-	return np.average(wa)
+		if ch[0]+sum(ca)>=sum(ch): nn +=1
+	return np.average(wa) 
 
 
 
 pool = mp.Pool(mp.cpu_count())
-print(mp.cpu_count())
+#print(mp.cpu_count())
 results = pool.map(simu, [Num_of_sim_per_proc]*mp.cpu_count())
+#results = pool.map(simu, [Num_of_sim_per_proc]*1)
 pool.close()
 
-print(results, np.average(results))
+print(results,np.average(results))
 print("--- %s seconds ---" % (time.time() - start_time))

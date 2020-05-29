@@ -16,5 +16,9 @@ list_oh_weight = {i: 0 for i in range(10)}
 
 print(list_oh_weight)
 
-l =[0,1,2,3,4]
-print(l[-1],l[-2],l[-5])
+l =[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+frozen = 5
+vrf_ca = [l[i] for i in range(len(l)) if i%frozen == 0]
+print(l==[l[0]]+l[1:])
+print(2%1)
+print(vrf_ca)
