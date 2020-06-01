@@ -99,7 +99,7 @@ if __name__ == '__main__':
     na = 33
     height = 150
     e = 5
-    sim = 100000
+    sim = 10000
     min_length = 10
 
     # Function to execute on multiple threads
@@ -125,7 +125,9 @@ if __name__ == '__main__':
     print("Num Cycles", num_cycles)
     print("Max number of num cycles catchup", max_total_catchup)
 
-    print("--- %s seconds ---" % (time.time() - start_time))
+    print(
+        "Average:", np.average(longestfork),
+        "Median:", np.median(longestfork),
+        "Worst length:", max(longestfork))
 
-    # n = log(2**-30)/log(ec[0])
-    # print(n)
+    print("--- %s seconds ---" % (time.time() - start_time))
