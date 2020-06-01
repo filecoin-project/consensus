@@ -16,7 +16,9 @@ def calculate_pr_catchup(nh, na, height, e, sim, min_length):
 
     # win_ec - probability of catching up
     win_ec = 0
-
+    # forkwin - list of whether the adversary can succeed an attack of length
+    # i for each i in eight ( 1 if not 0 if yes)
+    forkwin = [0]*height
     # Run simulations
     for i in range(sim):
         # Simulate leaders of a chain of specific height
@@ -36,26 +38,55 @@ def calculate_pr_catchup(nh, na, height, e, sim, min_length):
         win = 1
 
         # sumh - weight of honest chain
-        sumh = ch[0]
+        sumh = 0
         # sumh - weight of dishonest chain
-        suma = ca[0]
-        while sumh > suma and ind < height:
+        suma = 0
+       
+
+        # for each slot, we check if the adversary can succeeds its attack,
+        # i.e., if the adversary has a chain with more blocks
+        for ind in range(height)
+        #while sumh > suma and ind < height:
             sumh += ch[ind]
             suma += ca[ind]
-            ind += 1
-            if ind == height:
-                win =0
-                break
+            if suma>=sumh: #if the adversary wins
+                forkwin[height]=1
+                if ind >= min_length:
+                    longestfork.append(ind)
+
 
         # Second attack: Headstart catchup (if attacker didn't win so far)
         # The attack starts if
         # TODO: perform headstart attack a block earlier
-        if win == 0 and ca[0] > 1 :
-            sumh =  ch[1]/2 + ch[2]
-            #at round j the power of honest miners is still split between two chains
-            #at round j+1 it goes all back to one chain
 
-            suma = ca[0]-1 + ca[2]
+        ## to do: check if there is an advantage in doing
+        ## headstart from before and if yes add it to sum_a
+        if win == 0 and ca[0] > 1 :
+            # ch_before - list of number of honest leaders per slot before attack starts
+            ch_before = np.random.binomial(nh, p, height)
+            # ca_before - list of number of honest leaders per slot before attack starts
+            ca_before = np.random.binomial(na, p, height)
+
+
+            #the slot 0 for ca_before and ch_before corresponds to the case before the
+            # catch up starts, so by definition a slot where the adversary is not elected leader
+            # so we assume ca[0] = 0 by definition (or simply ignore ca[0])
+            if ca[1] > 1: # the attack works only if the adversary has at
+            # least two blocks in slot 1
+                adv_start =   ca[1] 
+                h_start =     1     + ch_before[0]/2
+                if adv_start > h_start: #if this is negative, there is no point doing this attack
+                # the attack above is trictly better
+                    # the adver
+
+                # to do the attack one step before we need to check whether it's wprth it:
+                adv_start = ca_before[2] 
+                h_start = 1 + ch_before[1]/2 + 1 + ch_before[0]/2
+                if adv_start >h_start:
+                    #do attack
+
+            #at round 0 the power of honest miners is still split between two chains
+            #after that it goes all back to one chain
             #the adversary used all the blocks it withheld in period j-1
             #(all of them minus 1 that it used to maintain the forks)
 
@@ -74,12 +105,13 @@ def calculate_pr_catchup(nh, na, height, e, sim, min_length):
 
         # ind < height means that the attacker has won
         # the probability of winning ind > height is very low
-        if ind < height:
-            # ensure that the miners' fork is at least of min_length
-            # TODO: this won't cover the actual request from @nicola
-            win_ec+=1
-            # Keep track of the fork as soon as it's successful
-            longestfork.append(ind)
+        # if ind < height:
+        #     # ensure that the miners' fork is at least of min_length
+        #     # TODO: this won't cover the actual request from @nicola
+        #     win_ec+=1
+        #     # Keep track of the fork as soon as it's successful
+        #     longestfork.append(ind)
+
 
     return float(win_ec)/float(sim), longestfork
 
