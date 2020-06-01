@@ -1,8 +1,9 @@
 import numpy as np
 import time
 from math import floor, log
+import multiprocessing as mp
 
-def pr_catchup(nh, na, height, e, sim, min_length):
+def calculate_pr_catchup(nh, na, height, e, sim, min_length):
 
     # ntot - total number of players
     ntot = na + nh
@@ -80,22 +81,49 @@ def pr_catchup(nh, na, height, e, sim, min_length):
             # Keep track of the fork as soon as it's successful
             longestfork.append(ind)
 
-    longestfork.sort()
     return float(win_ec)/float(sim), longestfork
+
+# sim - number of simulations
+# num_cycles - number of repeated attacks
+def calculate_max_total_catchup(sim, num_cycles, longestfork):
+    # need to stop before the end of the longest fork
+    # if it is not a multiple of num
+    stop = int(floor(sim/num_cycles)*num_cycles)
+
+    # Calculate the max consecutive catchup, by looking at num_cycles consecutive forks
+    groupedfork = [sum(longestfork[x : x+num_cycles]) for x in range(0, stop, num_cycles)]
+    return max(groupedfork)
 
 if __name__ == '__main__':
     nh = 67
     na = 33
     height = 150
     e = 5
-    sim = 1000
+    sim = 100000
     min_length = 10
+
+    # Function to execute on multiple threads
+    def single_cpu (sim):
+        pr_catchup, longestfork = calculate_pr_catchup(nh, na, height, e, sim, min_length)
+        num_cycles = int(log(2**-30) / log(pr_catchup))
+        max_total_catchup = calculate_max_total_catchup(sim, num_cycles, longestfork)
+        return max_total_catchup, num_cycles, pr_catchup, longestfork
 
     # start_time - useful for debugging
     start_time = time.time()
 
-    res, longestfork = pr_catchup(nh, na, height, e, sim, min_length)
-    print np.average(longestfork), np.median(longestfork), np.average(longestfork[-33:]), max(longestfork)
+    pool = mp.Pool(mp.cpu_count())
+    print("CPUs", mp.cpu_count())
+    results = pool.map(single_cpu, [sim] * mp.cpu_count())
+    pool.close()
+
+    # Find best simulation and return values
+    best_sim_index = np.argmax([result[0] for result in results])
+    max_total_catchup, num_cycles, pr_catchup, longestfork = results[best_sim_index]
+
+    print("PrCatchup", pr_catchup)
+    print("Num Cycles", num_cycles)
+    print("Max number of num cycles catchup", max_total_catchup)
 
     print("--- %s seconds ---" % (time.time() - start_time))
 
