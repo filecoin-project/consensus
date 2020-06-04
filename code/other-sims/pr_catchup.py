@@ -6,7 +6,7 @@ import multiprocessing as mp
 
 ## TO DO: rewrite the groupedfork thing
 
-def calculate_pr_catchup(nh, na, height, e, sim, min_length):
+def calculate_pr_catchup(nh, na, height, e, sim):
     # ntot - total number of players
     ntot = na + nh
     # p - probability of one player to win
@@ -28,6 +28,7 @@ def calculate_pr_catchup(nh, na, height, e, sim, min_length):
         # ca - list of number of honest leaders per slot
         ca = np.random.binomial(na, p, height)
 
+        longestfork = []
         # First attack: Normal catchup
         # Run through the chain until the attacker's chain is heavier
         # or when we run out of time
@@ -97,40 +98,51 @@ def calculate_pr_catchup(nh, na, height, e, sim, min_length):
 
 # sim - number of simulations
 # num_cycles - number of repeated attacks
-def calculate_max_total_catchup(sim, num_cycles, forks, min_length):
+def calculate_max_total_catchup(sim, num_cycles, forks):
     # need to filter longest fork with min_length
-    longestfork = []
+    height = len(num_cycles)
+
+    longestfork = {k : [] for k in range(1,height)}
 
     for fork in forks:
-        if fork[-1]>= min_length: #check if there exists a fork of length at least min_length
-            #take the first value greater or equal than min_length
-            value = next(val for  val in fork if val >= min_length) 
-            longestfork.append(value)
+        for min_length in range(1,height):
+            if fork:
+                if fork[-1]>= min_length: #check if there exists a fork of length at least min_length
+                #take the first value greater or equal than min_length
+                    value = next(val for  val in fork if val >= min_length) 
+                    longestfork[min_length].append(value)
     # f - variable used to make sure we don't count the "same" fork twice
     # need to stop before the end of the longest fork
     # if it is not a multiple of num
-    stop = int(floor(sim/num_cycles)*num_cycles)
 
-    # Calculate the max consecutive catchup, by looking at num_cycles consecutive forks
-    groupedfork = [sum(longestfork[x : x+num_cycles]) for x in range(0, stop, num_cycles)]
-    return max(groupedfork)
+    totcatchup =[]
+    for key,value in longestfork.iteritems():
+        num_cycle = num_cycles[key]
+        if num_cycle >0:
+            stop = int(floor(sim/num_cycle)*num_cycle)
+            ll = [sum(value[x : x+num_cycle]) for x in range(0, stop, num_cycle)]
+        # Calculate the max consecutive catchup, by looking at num_cycles consecutive forks
+            if ll: maxgroupedfork = max(ll)
+            else: maxgroupedfork = 0
+            totcatchup.append(maxgroupedfork)
+        else:
+            totcatchup.append(0)
+    return totcatchup
 
 if __name__ == '__main__':
     nh = 67
     na = 33
-    height = 150
+    height = 50
     e = 5
     sim = 10
-    min_length = 10
+    #min_length = 10
 
     # Function to execute on multiple threads
     def single_cpu (sim):
-        pr_catchup, forks = calculate_pr_catchup(nh, na, height, e, sim, min_length)
-        num_cycles = int(log(2**-30) / log(pr_catchup))
-        num_cycles = [int(log(2**-30) / log(pr)) for pr in pr_catchup]
-        max_total_catchup = []
-        for num_cycle in num_cycles:
-            max_total_catchup.append(calculate_max_total_catchup(sim, num_cycle, forks,min_length))
+        pr_catchup, forks = calculate_pr_catchup(nh, na, height, e, sim)
+        #num_cycles = int(log(2**-30) / log(pr_catchup))
+        num_cycles = [int(log(2**-30) / log(pr)) if pr>0 else 0 for pr in pr_catchup ]
+        max_total_catchup=calculate_max_total_catchup(sim, num_cycles, forks)
         return max_total_catchup, num_cycles, pr_catchup, forks
 
     # start_time - useful for debugging
@@ -138,9 +150,10 @@ if __name__ == '__main__':
 
     pool = mp.Pool(mp.cpu_count())
     print("CPUs", mp.cpu_count())
-    results = pool.map(single_cpu, [sim] * mp.cpu_count())
+    #results = pool.map(single_cpu, [sim] * mp.cpu_count())
+    results = single_cpu(sim)
     pool.close()
-
+    print results 
     # Find best simulation and return values
     best_sim_index = np.argmax([result[0] for result in results])
     max_total_catchup, num_cycles, pr_catchup, longestfork = results[best_sim_index]
