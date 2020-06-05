@@ -2,12 +2,13 @@ import numpy as np
 import time
 from math import floor, log
 import multiprocessing as mp
-
+from operator import add
 
 ## Improvement:
 # compute the Pr_catch up on all processors, then take the average
 # and compute num_cycles and max_tot_catchup after this
 
+# to do: check the headstart thing
 def calculate_pr_catchup(nh, na, height, e, sim):
     # ntot - total number of players
     ntot = na + nh
@@ -87,18 +88,30 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         suma += adv # we add the advantage gained by HS to the adversarial weight
         # for each slot, we check if the adversary can succeeds its attack,
         # i.e., if the adversary has a chain with more blocks
+
+        # maxfork tracks the longest fork the adversary can do
+        maxfork = 0
         for ind in range(height):
         #while sumh > suma and ind < height:
             sumh += ch[ind]
             suma += ca[ind]
+
             if suma >= sumh: #if the adversary wins
-                forkwin[ind] += 1. #add one to forkwin at height ind
+                #the adversary was able to create a fork of length ind +1 (because ind starts at zero)
+                maxfork = ind+1 #
 
                 ### if forks succeed, add it to forks_in_that_sim
                 # we add +1 because the index starts at zero (the length
                 # of the fork in that case is one not zero)
                 forks_in_that_sim.append(ind+1) #this will give us the
                 #list of consecutive successful attacks of length at least min_length
+            # update forkwin with ones up to maxfork
+
+        # forkwin - list of whether the adversary can succeed an attack of length
+        # i for each i in eight ( 1 if not 0 if yes)
+        # add +1 for every successulf attacks
+        #forkwin += [1]*maxfork + [0]*(height-maxfork)
+        forkwin = list( map(add, forkwin, [1]*maxfork + [0]*(height-maxfork)) )
         
         forks.append(forks_in_that_sim)
     # return an array of probability of doing a catch up of length j for each j
@@ -143,7 +156,7 @@ if __name__ == '__main__':
     na = 33
     height = 60
     e = 5
-    sim = 1000
+    sim = 100000
     #min_length = 10
 
     # Function to execute on multiple threads
