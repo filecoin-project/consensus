@@ -50,7 +50,7 @@ def simu(sim):
 	stop = int(floor(sim/num)*num) #need to stop before the end of the longest fork
 # #if it is not a multiple of num
 	groupedfork=[ sum(longestfork[x:x+num]) for x in range(0, stop, num)]  #we grouped the num
-	#successive attacks toigether and sums them up to get the length of num successives attacks
+	#successive attacks together and sums them up to get the length of num successives attacks
 	return max(groupedfork)
 
 pool = mp.Pool(mp.cpu_count())

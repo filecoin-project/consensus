@@ -25,6 +25,7 @@ def calculate_pr_catchup(nh, na, height, e, sim):
     # forks - list of list of all forks iin each simulation
     forks = []
 
+    np.random.seed()
     # Run simulations
     for i in range(sim):
         # Simulate leaders of a chain of specific height
