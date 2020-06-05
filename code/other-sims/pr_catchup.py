@@ -4,7 +4,9 @@ from math import floor, log
 import multiprocessing as mp
 
 
-## TO DO: rewrite the groupedfork thing
+## Improvement:
+# compute the Pr_catch up on all processors, then take the average
+# and compute num_cycles and max_tot_catchup after this
 
 def calculate_pr_catchup(nh, na, height, e, sim):
     # ntot - total number of players
@@ -12,15 +14,17 @@ def calculate_pr_catchup(nh, na, height, e, sim):
     # p - probability of one player to win
     p = float(e) / float(1 * ntot)
 
-
-
     # win_ec - probability of catching up
     win_ec = 0
+
     # forkwin - list of whether the adversary can succeed an attack of length
     # i for each i in eight ( 1 if not 0 if yes)
     forkwin = [0.]*height
-    # Run simulations
+    
+    # forks - list of list of all forks iin each simulation
     forks = []
+
+    # Run simulations
     for i in range(sim):
         # Simulate leaders of a chain of specific height
         # ch - list of number of honest leaders per slot
@@ -28,7 +32,8 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         # ca - list of number of honest leaders per slot
         ca = np.random.binomial(na, p, height)
 
-        longestfork = []
+        # forks_in_that_sim - list of fork in that simulation
+        forks_in_that_sim = []
         # First attack: Normal catchup
         # Run through the chain until the attacker's chain is heavier
         # or when we run out of time
@@ -88,12 +93,16 @@ def calculate_pr_catchup(nh, na, height, e, sim):
             suma += ca[ind]
             if suma >= sumh: #if the adversary wins
                 forkwin[ind] += 1. #add one to forkwin at height ind
-                #if ind>=min_length:
 
-                ### need to "separate different simu here"
-                longestfork.append(ind+1) #this will give us the
-                    #list of consecutive successful attacks of length at least min_length
-        forks.append(longestfork)
+                ### if forks succeed, add it to forks_in_that_sim
+                # we add +1 because the index starts at zero (the length
+                # of the fork in that case is one not zero)
+                forks_in_that_sim.append(ind+1) #this will give us the
+                #list of consecutive successful attacks of length at least min_length
+        
+        forks.append(forks_in_that_sim)
+    # return an array of probability of doing a catch up of length j for each j
+    # and the list of the length of all the fork created in each simulation
     return  np.array(forkwin)/float(sim),forks
 
 # sim - number of simulations
@@ -132,9 +141,9 @@ def calculate_max_total_catchup(sim, num_cycles, forks):
 if __name__ == '__main__':
     nh = 67
     na = 33
-    height = 50
+    height = 60
     e = 5
-    sim = 10
+    sim = 1000
     #min_length = 10
 
     # Function to execute on multiple threads
@@ -143,28 +152,36 @@ if __name__ == '__main__':
         #num_cycles = int(log(2**-30) / log(pr_catchup))
         num_cycles = [int(log(2**-30) / log(pr)) if pr>0 else 0 for pr in pr_catchup ]
         max_total_catchup=calculate_max_total_catchup(sim, num_cycles, forks)
-        return max_total_catchup, num_cycles, pr_catchup, forks
-
+        return max_total_catchup, num_cycles, pr_catchup
     # start_time - useful for debugging
     start_time = time.time()
 
     pool = mp.Pool(mp.cpu_count())
     print("CPUs", mp.cpu_count())
-    #results = pool.map(single_cpu, [sim] * mp.cpu_count())
-    results = single_cpu(sim)
+    results = pool.map(single_cpu, [sim] * mp.cpu_count())
+    #results = single_cpu(sim)
     pool.close()
-    print results 
+    # for each length we want to get the worst (max) longest fork
+    max_total_catchup_overallsims = [0]*height
+    for i in range(height-1):
+        for result in results:
+            if result[0][i]>max_total_catchup_overallsims[i]:
+                max_total_catchup_overallsims[i] = result[0][i]
     # Find best simulation and return values
-    best_sim_index = np.argmax([result[0] for result in results])
-    max_total_catchup, num_cycles, pr_catchup, longestfork = results[best_sim_index]
+    #best_sim_index = np.argmax([result[0] for result in results])
+    
+    pr_catchup = results[0][2]
+    num_cycles = results[0][1]
+
+    #max_total_catchup, num_cycles, pr_catchup, longestfork = results[best_sim_index]
 
     print("PrCatchup", pr_catchup)
     print("Num Cycles", num_cycles)
-    print("Max number of num cycles catchup", max_total_catchup)
+    print("Max number of num cycles catchup", max_total_catchup_overallsims)
 
-    print(
-        "Average:", np.average(longestfork),
-        "Median:", np.median(longestfork),
-        "Worst length:", max(longestfork))
+    # print(
+    #     "Average:", np.average(longestfork),
+    #     "Median:", np.median(longestfork),
+    #     "Worst length:", max(longestfork))
 
     print("--- %s seconds ---" % (time.time() - start_time))
