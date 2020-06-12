@@ -56,7 +56,7 @@ if __name__ == '__main__':
     na = 33
     height = 60
     e = 5
-    sim = 100000000
+    sim = 100
     #min_length = 10
     start_time = time.time()
     # Function to execute on multiple threads

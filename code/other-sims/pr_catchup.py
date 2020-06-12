@@ -3,12 +3,25 @@ import time
 from math import floor, log
 import multiprocessing as mp
 from operator import add
+from scipy.stats import binom as bi
+import math
+
+## TO DO I feel we should also to the headstart (i.e. case 4) in the same attack
+
+
 
 ## Improvement:
 # compute the Pr_catch up on all processors, then take the average
 # and compute num_cycles and max_tot_catchup after this
 
-# to do: check the headstart thing
+# two chain - variable that captures if we assume the adversary can only maintains
+# two chains or potentially more (thus splitting the honest power even more)
+twochains = 0
+
+# epochboundarylength - capture length of epoch boundary 
+# (needed for "headstart" catchup)
+epochboundarylength = 20 #gross approximation we are more or less guaranteed of having one null blocks
+
 def calculate_pr_catchup(nh, na, height, e, sim):
     # ntot - total number of players
     ntot = na + nh
@@ -36,12 +49,7 @@ def calculate_pr_catchup(nh, na, height, e, sim):
 
         # forks_in_that_sim - list of fork in that simulation
         forks_in_that_sim = []
-        # First attack: Normal catchup
-        # Run through the chain until the attacker's chain is heavier
-        # or when we run out of time
 
-        # ind - current height of the simulation
-        ind = 1
         # win : Boolean - keeps track of whether the attacker succeeds
         # it has value 1 if it's attack succeeds, 0 if it does not
         win = 1
@@ -55,48 +63,64 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         # to start the attack at round 0 when the fork starts or to start the attack 'before'
         # the fork by doing a headstart at round -1 or -2 etc...
 
+
         # ch_before - list of number of honest leaders per slot before attack starts
-        ch_before = np.random.binomial(nh, p, height)
+        # I am not sure how far back we should go in time (this depends of the
+        # length of epoch boundary)
+        ch_before = np.random.binomial(nh, p, epochboundarylength)
         # ca_before - list of number of adversarial leaders per slot before attack starts
-        ca_before = np.random.binomial(na, p, height)
+        ca_before = np.random.binomial(na, p, epochboundarylength)
 
         # the slot 0 for ca_before and ch_before corresponds to the case before the
         # catch up starts, so by definition a slot where the adversary is not elected leader
         # (as the catch up starts after the epoch boundary has finished)
         # so we assume ca[0] = 0 by definition (or simply ignore ca[0])
-        adv = 0
-        if ca_before[1] > 1: # the attack works only if the adversary has at
-        # least two blocks in slot 1
-            adv_start =   ca[1] # this is what the adversary gains by doing HS
-            h_start =     1     + ch_before[0]/2 # this is what the honest gains
-            # the one stands for the block that the adversary used for the epoch boundary
-            # and ch_before[0]/2 corresponds to the fact that the honest power is split in two
-            # (for now we consider the case of two forks only)
 
-            if adv_start > h_start: #if this is negative, there is no point doing this attack
-            # the attack above is trictly better
-                # the adver
-                adv = adv_start - h_start #this is the advantage that the adversary gains by
-                #doing headstart compared to simply doing the attack
+        # adv - captures the advantage of the adversary when starting it's catchup before slot zero
+        adv = 0 
 
-            # to do the attack one step before we need to check whether it's worth it:
-            adv_start = ca_before[2] 
-            h_start = 1 + ch_before[1]/2 + 1 + ch_before[0]/2 # we add to the honest advantage
-            # the blocks from slot -1 and -2 that the adversary had to ignore
-            if adv_start - h_start > adv:
-                #do attack
-                adv = adv_start - h_start #this is the advantage of doing headstart from two blocks before
+        for j in range(1,epochboundarylength):
+            #we can only do the headstart if there was more than one block
+            #created by the adversary at that height
+            # adv_start - advantage in adverssrial chain
+            adv_start = 0
+            # h_start - advantage in honest chain
+            h_start = 0
+
+            # if the adversary has more than one block at this epoch,
+            # do the attack (this is a bit weird bc we assume we are in the epoch boundary so the
+            # adversary should have one block otherwise the epoch boundary stops)
+            if ca_before[j]>1:
+            	# in its chain the adversary uses all of its block
+                adv_start = ca_before[j]
+
+                # the honest chain uses only one of the adversarial block
+                # that was created to do the epoch boundary
+                h_start = 1 
+                # at each height eight less than j, adv uses all its blocks in its alternative chain
+                # if you want to do the HS + EB you need to use one block at each height (EB) and save the others
+                # for HS
+                # so for every height where you have>1 more than one block you actually win
+                # an advantage
+                for k in range(1,j):
+                    if ca_before[k]>0:
+                        adv_start+=ca_before[k]
+                        if twochains:
+                            h_start += 1 + ch_before[k]/2 #divide by two because we assume chain split in two for now
+                        else:
+                            h_start += 1 + min(1,ch_before[k]) # assume two blocks at each height
+                            # or one if honest don't have leaders
+            if adv_start - h_start > adv:# start HS  where you have the more adv
+                adv = adv_start - h_start
+
         suma += adv # we add the advantage gained by HS to the adversarial weight
         # for each slot, we check if the adversary can succeeds its attack,
         # i.e., if the adversary has a chain with more blocks
-
-        # maxfork tracks the longest fork the adversary can do
+        # maxfork - tracks the longest fork the adversary can do
         maxfork = 0
         for ind in range(height):
-        #while sumh > suma and ind < height:
             sumh += ch[ind]
             suma += ca[ind]
-
             if suma >= sumh: #if the adversary wins
                 #the adversary was able to create a fork of length ind +1 (because ind starts at zero)
                 maxfork = ind+1 #
@@ -134,14 +158,14 @@ def calculate_max_total_catchup(sim, num_cycles, forks):
                 #take the first value greater or equal than min_length
                     value = next(val for  val in fork if val >= min_length) 
                     longestfork[min_length].append(value)
-    # f - variable used to make sure we don't count the "same" fork twice
-    # need to stop before the end of the longest fork
-    # if it is not a multiple of num
 
+    # totcatchup - keep track of total catch up length for each min_length
     totcatchup =[]
-    for key,value in longestfork.iteritems():
+    for key,value in longestfork.items():
         num_cycle = num_cycles[key]
         if num_cycle >0:
+        	# stop - need to stop before the end of the longest fork
+ 			# if it is not a multiple of num
             stop = int(floor(sim/num_cycle)*num_cycle)
             ll = [sum(value[x : x+num_cycle]) for x in range(0, stop, num_cycle)]
         # Calculate the max consecutive catchup, by looking at num_cycles consecutive forks
@@ -152,18 +176,36 @@ def calculate_max_total_catchup(sim, num_cycles, forks):
             totcatchup.append(0)
     return totcatchup
 
+
+def MaxTotalBeforeNull(sim,num_cycles ,nullProb = .188): # 0.18 is the proba of having one slot null
+    maxtotBN= []
+    for targetNulls in num_cycles:
+    # This is a simple CDF of a binomial (sum of binom probas up to x).
+    # each round has a proba p = advNullRound() of being null for the adversary
+    # We are looking for n such that n trials will yield at least targ successes with high proba
+    # which is to say n s.t. 1 - CDF(targ, n, p) > 1 - s => CDF(targ, n, p) < s
+        totalRounds = targetNulls - 1
+        sumToTargN = 1
+        while sumToTargN >= s:
+            totalRounds += 1
+            sumToTargN = bi.cdf(targetNulls - 1, totalRounds, nullProb) 
+        maxtotBN.append(totalRounds)
+    return maxtotBN
+
 if __name__ == '__main__':
     nh = 67
     na = 33
-    height = 60
+    height = 50
     e = 5
     sim = 100000
     #min_length = 10
+    s = 2**-30
 
     # Function to execute on multiple threads
     def single_cpu (sim):
         pr_catchup, forks = calculate_pr_catchup(nh, na, height, e, sim)
         #num_cycles = int(log(2**-30) / log(pr_catchup))
+        #print(pr_catchup)
         num_cycles = [int(log(2**-30) / log(pr)) if pr>0 else 0 for pr in pr_catchup ]
         max_total_catchup=calculate_max_total_catchup(sim, num_cycles, forks)
         return max_total_catchup, num_cycles, pr_catchup
@@ -188,14 +230,16 @@ if __name__ == '__main__':
     num_cycles = results[0][1]
 
     #max_total_catchup, num_cycles, pr_catchup, longestfork = results[best_sim_index]
-
+    
     print("PrCatchup", pr_catchup)
     print("Num Cycles", num_cycles)
     print("Max number of num cycles catchup", max_total_catchup_overallsims)
-
+    maxtotBN = MaxTotalBeforeNull(sim,num_cycles)
+    attack_total = list( map(add, max_total_catchup_overallsims, maxtotBN) )
+    print("Max Before Null", maxtotBN)
     # print(
     #     "Average:", np.average(longestfork),
     #     "Median:", np.median(longestfork),
     #     "Worst length:", max(longestfork))
-
+    print("Total attack", attack_total)
     print("--- %s seconds ---" % (time.time() - start_time))

@@ -12,17 +12,16 @@ na=33
 ntot=na+nh
 e=5
 print "e = ", e
-Num_of_sim_per_proc = 100000
+Num_of_sim_per_proc = 1000000000
 p=float(e)/float(ntot)
 min_length=10
 
-## Takes the number of cycles num and return the worst TotalCatchup
-## of num consecutives catchup (of length at least min_length)
+
 
 ec =[]
 praos = []
 ### Put NumCycle here
-if e==5: num=4 
+if e==5: num=43
 if e==1: num=81 #number of allowed consecutive attacks computed previously
 start_time = time.time()
 height=150#the height is chosen to avoid infinite loop, in practice a selfish mining
