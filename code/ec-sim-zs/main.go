@@ -60,14 +60,16 @@ func makeGen(lbp int, totalMiners int) *Block {
 	var gen *Tipset
 	for i := 0; i < lbp; i++ {
 		gen = NewTipset([]*Block{&Block{
-			InHead:       true,
-			Nonce:        getUniqueID(),
-			Parents:      gen,
-			Owner:        -1,
-			Height:       0,
-			Null:         false,
-			ParentWeight: 0,
-			Seed:         uint64(randInt(int64(bigOlNum * totalMiners))),
+			InHead:        true,
+			Nonce:         getUniqueID(),
+			ParentTS:      gen,
+			DirectParents: gen,
+			Owner:         -1,
+			Round:         0,
+			Height:        0,
+			Null:          false,
+			ParentWeight:  0,
+			Seed:          uint64(randInt(int64(bigOlNum * totalMiners))),
 		}})
 	}
 	return gen.Blocks[0]
@@ -80,7 +82,8 @@ func allTipsets(blks []*Block) []*Tipset {
 	for i, blk1 := range blks {
 		tipset := []*Block{blk1}
 		for _, blk2 := range blks[i+1:] {
-			if blk1.Height == blk2.Height && blk1.Parents.Name == blk2.Parents.Name {
+			// same round (num of tickets) and same parents
+			if blk1.Round == blk2.Round && blk1.ParentTS.Name == blk2.ParentTS.Name {
 				tipset = append(tipset, blk2)
 			}
 		}
@@ -127,14 +130,16 @@ func stringifyBlocks(blocks []*Block) string {
 // Block
 type Block struct {
 	// Nonce is unique for each block
-	Nonce        int     `json:"nonce"`
-	Parents      *Tipset `json:"tipset"`
-	Owner        int     `json:"owner"`
-	Height       int     `json:"height"`
-	Null         bool    `json:"null"`
-	ParentWeight int     `json:"parentWeight"`
-	Seed         uint64  `json:"seed"`
-	InHead       bool    `json:"inHead"`
+	Nonce         int     `json:"nonce"`
+	ParentTS      *Tipset `json:"tipset"`
+	DirectParents *Tipset `json:"directParent"`
+	Owner         int     `json:"owner"`
+	Round         int     `json:"round"`
+	Height        int     `json:"height"`
+	Null          bool    `json:"null"`
+	ParentWeight  int     `json:"parentWeight"`
+	Seed          uint64  `json:"seed"`
+	InHead        bool    `json:"inHead"`
 }
 
 // Tipset
@@ -150,12 +155,12 @@ type Tipset struct {
 
 // Chain tracker
 type chainTracker struct {
-	// index tipsets per height
-	liveBlocksByHeight map[int][]*Block `json:"liveBlocksByHeight"`
-	allBlocks          map[int]*Block   `json:"allBlocks"`
-	maxHeight          int              `json:"maxHeight"`
-	head               *Tipset          `json:"head"`
-	miners             []*RationalMiner `json:"miner"`
+	// index tipsets per round
+	liveBlocksByRound map[int][]*Block `json:"liveBlocksByRound"`
+	allBlocks         map[int]*Block   `json:"allBlocks"`
+	maxRound          int              `json:"maxRound"`
+	head              *Tipset          `json:"head"`
+	miners            []*RationalMiner `json:"miner"`
 }
 
 // Rational Miner
@@ -170,12 +175,12 @@ type RationalMiner struct {
 //**** Block helpers
 
 // Walk back until we find a tipset with a live parent
-func (bl *Block) liveParents() *Tipset {
+func (bl *Block) tmpliveParents() *Tipset {
 	// Tipsets with null blocks only contain one block (since null blocks are mined privately)
 	// All blocks in a tipset share parents
-	parents := bl.Parents
+	parents := bl.ParentTS
 	for parents.Blocks[0].Null {
-		parents = parents.Blocks[0].Parents
+		parents = parents.Blocks[0].ParentTS
 	}
 	return parents
 }
@@ -213,6 +218,14 @@ func NewTipset(blocks []*Block) *Tipset {
 	}
 }
 
+func (ts *Tipset) getRound() int {
+	if len(ts.Blocks) == 0 {
+		panic("Don't call round on no parents")
+	}
+	// Works because all blocks in a tipset have same round (see allTipsets)
+	return ts.Blocks[0].Round
+}
+
 func (ts *Tipset) getHeight() int {
 	if len(ts.Blocks) == 0 {
 		panic("Don't call height on no parents")
@@ -221,21 +234,28 @@ func (ts *Tipset) getHeight() int {
 	return ts.Blocks[0].Height
 }
 
-func (ts *Tipset) getParents() *Tipset {
+func (ts *Tipset) getParentTS() *Tipset {
 	if len(ts.Blocks) == 0 {
 		panic("Don't call parents on nil blocks")
 	}
-	return ts.Blocks[0].Parents
+	return ts.Blocks[0].ParentTS
+}
+
+func (ts *Tipset) getDirectParents() *Tipset {
+	if len(ts.Blocks) == 0 {
+		panic("Don't call parents on nil blocks")
+	}
+	return ts.Blocks[0].DirectParents
 }
 
 //**** CT Helpers
 
 func NewChainTracker(miners []*RationalMiner) *chainTracker {
 	return &chainTracker{
-		liveBlocksByHeight: make(map[int][]*Block),
-		allBlocks:          make(map[int]*Block),
-		maxHeight:          -1,
-		miners:             miners,
+		liveBlocksByRound: make(map[int][]*Block),
+		allBlocks:         make(map[int]*Block),
+		maxRound:          -1,
+		miners:            miners,
 	}
 }
 
@@ -280,35 +300,38 @@ func NewRationalMiner(id int, power float64, totalMiners int, rng *rand.Rand) *R
 // the spec, the result is the same for consensus.
 // To that end, we use separate tickets for new ticket generation and election proof generation
 // in case there is randomness skew (though can't think of what it would be rn)
-func (m *RationalMiner) generateBlock(parents *Tipset, lbp int) *Block {
+func (m *RationalMiner) generateBlock(directParents *Tipset, lbp int) *Block {
 	// Given parents and id we have a unique source for new ticket
-	lotteryTicket := lookbackTipset(parents, lbp).MinTicket
-	lastTicket := lookbackTipset(parents, 1).MinTicket
+	lotteryTicket := lookbackBlocks(directParents, lbp).MinTicket
+	lastTicket := lookbackBlocks(directParents, 1).MinTicket
 
-	// Also need live parents off of which to calculate new weight
-	liveParents := parents
-	if parents.Blocks[0].Null {
+	// Also need parent TS off of which to calculate new weight
+	liveParents := directParents
+	if directParents.Blocks[0].Null {
 		// null blocks will only ever be in single-block tipsets so this works
-		liveParents = parents.Blocks[0].liveParents()
+		liveParents = directParents.Blocks[0].ParentTS
 	}
 
 	// generate a new ticket from parent tipset
 	t := m.generateTicket(lastTicket)
 	// include in new block
 	nextBlock := &Block{
-		Nonce:        getUniqueID(),
-		Parents:      parents,
-		Owner:        m.ID,
-		Height:       parents.getHeight() + 1,
-		ParentWeight: liveParents.Weight,
-		Seed:         t,
-		InHead:       false,
+		Nonce:         getUniqueID(),
+		DirectParents: directParents,
+		ParentTS:      liveParents,
+		Owner:         m.ID,
+		Round:         directParents.getRound() + 1,
+		Height:        liveParents.getHeight(),
+		ParentWeight:  liveParents.Weight,
+		Seed:          t,
+		InHead:        false,
 	}
 
 	// check lotteryTicket to see if the block can be published
 	electionProof := m.generateTicket(lotteryTicket)
 	if isWinningTicket(electionProof, m.Power) {
 		nextBlock.Null = false
+		nextBlock.Height += 1
 	} else {
 		nextBlock.Null = true
 	}
@@ -340,12 +363,12 @@ func (m *RationalMiner) ConsiderAllForks(atsforks [][]*Tipset) {
 	}
 }
 
-// Input the base tipset for mining lookbackTipset will return the ancestor
-// tipset that should be used for sampling the leader election seed.
+// Input the base tipset for mining lookbackBlocks will return the ancestor
+// tipset that should be used for sampling the leader election seed (ie including.
 // On LBP == 1, returns itself (as in no farther than direct parents)
-func lookbackTipset(tipset *Tipset, lbp int) *Tipset {
+func lookbackBlocks(tipset *Tipset, lbp int) *Tipset {
 	for i := 0; i < lbp-1; i++ {
-		tipset = tipset.getParents()
+		tipset = tipset.getDirectParents()
 	}
 	return tipset
 }
@@ -395,7 +418,7 @@ func (m *RationalMiner) Mine(ct *chainTracker, atsforks [][]*Tipset, lbp int) *B
 	} else {
 		// extend null block chain
 		for _, nblk := range nullBlocks {
-			delete(m.PrivateForks, nblk.Parents.Name)
+			delete(m.PrivateForks, nblk.DirectParents.Name)
 			// add the new null block to our private forks
 			nullTipset := NewTipset([]*Block{nblk})
 			m.PrivateForks[nullTipset.Name] = nullTipset
@@ -424,7 +447,7 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 	//     round for a given chain.
 	// Arrays of arrays of tipsets represent each chain/fork.
 	atsforks := make([][]*Tipset, 0, 50)
-	var currentHeight int
+	var currentRound int
 	for round := 0; round < roundNum; round++ {
 		// Update heaviest chain
 		chainTracker.setHead(blocks)
@@ -436,13 +459,13 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 
 		// checking an assumption
 		if len(blocks) > 0 {
-			currentHeight = blocks[0].Height
+			currentRound = blocks[0].Round
 			// add new blocks if we have any!
-			chainTracker.liveBlocksByHeight[currentHeight] = blocks
+			chainTracker.liveBlocksByRound[currentRound] = blocks
 		}
 		for _, blk := range blocks {
-			if currentHeight != blk.Height {
-				panic("Check your assumptions: all block heights from a round are not equal")
+			if currentRound != blk.Round {
+				panic("Check your assumptions: all block rounds from a round are not equal")
 			}
 		}
 
@@ -474,8 +497,8 @@ func runSim(totalMiners int, roundNum int, lbp int, c chan *chainTracker) {
 		printSingle(fmt.Sprintf("\n"))
 		blocks = newBlocks
 	}
-	// height is 0 indexed
-	chainTracker.maxHeight = roundNum - 1
+	// round is 0 indexed
+	chainTracker.maxRound = roundNum - 1
 	c <- chainTracker
 }
 
@@ -547,10 +570,10 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 	fmt.Fprintln(fil, "digraph G {")
 	fmt.Fprintln(fil, "\t{\n\t\tnode [shape=plaintext];")
 
-	// Write out height index alongside the block graph
+	// Write out round index alongside the block graph
 	fmt.Fprintf(fil, "\t\t0")
 	// Start at 1 because we already wrote out the 0 for the .dot file
-	for cur := int(1); cur <= ct.maxHeight+1; cur++ {
+	for cur := int(1); cur <= ct.maxRound+1; cur++ {
 		fmt.Fprintf(fil, " -> %d", cur)
 	}
 	fmt.Fprintln(fil, ";")
@@ -558,20 +581,20 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 
 	fmt.Fprintln(fil, "\tnode [shape=box];")
 	// Write out the actual blocks
-	for cur := ct.maxHeight; cur >= 0; cur-- {
-		// get blocks per height
-		blocks, ok := ct.liveBlocksByHeight[cur]
+	for cur := ct.maxRound; cur >= 0; cur-- {
+		// get blocks per round
+		blocks, ok := ct.liveBlocksByRound[cur]
 
 		if cur == 0 {
-			fmt.Printf(fmt.Sprintf("at height 0, blocks: %d", len(blocks)))
+			fmt.Printf(fmt.Sprintf("at round 0, blocks: %d", len(blocks)))
 		}
 
-		// if no blocks at height, skip
+		// if no blocks at round, skip
 		if !ok {
 			continue
 		}
 
-		// for every block at this height
+		// for every block at this round
 		fmt.Fprintf(fil, "\t{ rank = same; %d;", cur)
 
 		for _, block := range blocks {
@@ -590,7 +613,7 @@ func drawChain(ct *chainTracker, name string, outputDir string) {
 			if block.Owner == -1 {
 				continue
 			}
-			for _, parent := range block.liveParents().Blocks {
+			for _, parent := range block.ParentTS.Blocks {
 				fmt.Fprintf(fil, "\t\"b%d (m%d)\" -> \"b%d (m%d)\";\n", block.Nonce, block.Owner, parent.Nonce, parent.Owner)
 			}
 		}

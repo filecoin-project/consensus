@@ -172,12 +172,12 @@ def milliTS():
 
 if __name__ == "__main__":
     # TODO -- should use argparse to set values of these slices or read from config file
-    miners = [10, 20]#50, 100, 200, 400]
-    lbps = [1, 10]#, 20, 50, 100]
+    miners = [10, 20, 50, 100, 200, 300]
+    lbps = [1, 10, 20, 50, 100]
     trials = 3
-    rounds = 200
-    # sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
-    sweepDir = "./output/sweep-f"
+    rounds = 500
+    sweepDir = "/home/snarky/space/ec-sim/output/sweep-f"
+    # sweepDir = "./output/sweep-f"
 
     # TODO -- shoulduse argparse to express which operations should be done:
     #   run simulation and output (sweepByMinersAndLBP), plot existing data 
@@ -202,5 +202,5 @@ if __name__ == "__main__":
     400 rounds, 400 miners ===> 40m"""
     )
 
-    # sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
-    plotSweep(miners, lbps, ["NumReorgs", "LenReorgs"], sweepDir, rounds)
+    sweepByMinersAndLBP(miners, lbps, trials, rounds, sweepDir)
+    # plotSweep(miners, lbps, ["NumReorgs", "LenReorgs"], sweepDir, rounds)

@@ -10,7 +10,7 @@ class BlockTree:
     def readAndParse(self, filename):
         # Setup output datastructures.
         self.BlocksByNonce = dict()
-        self.BlocksByHeight = dict()
+        self.BlocksByRound = dict()
         self.BlocksByParentWeight = dict()
         self.MaxWeight = 0
         self.Miners = []
@@ -24,10 +24,10 @@ class BlockTree:
             blocks = data["blocks"]
             for block in blocks:
                 self.BlocksByNonce[block["nonce"]] = block
-                h = block["height"]
-                if h not in self.BlocksByHeight:
-                    self.BlocksByHeight[h] = []
-                self.BlocksByHeight[h].append(block)
+                r = block["round"]
+                if r not in self.BlocksByRound:
+                    self.BlocksByRound[r] = []
+                self.BlocksByRound[r].append(block)
                 w = block["parentWeight"]
                 if w not in self.BlocksByParentWeight:
                     self.BlocksByParentWeight[w] = []
@@ -56,7 +56,8 @@ class BlockTree:
 
         heaviestTipsets = dict()
         for block in heaviestBlocks:
-            parentsName = block["tipset"]["name"]
+            # actually go through the direct parent: ie incl null blocks
+            parentsName = block["directParent"]["name"]
             if not parentsName in heaviestTipsets:
                 heaviestTipsets[parentsName] = []
             heaviestTipsets[parentsName].append(block)
@@ -67,15 +68,15 @@ class BlockTree:
             heaviestTS = heaviestTipsets[tipset]
             for blk in heaviestTS:
                 chain.add(blk["nonce"])
-            # all will have the same parents and height so only need to take first
+            # all will have the same parents and round so only need to take first
             cur = heaviestTS[0]
-            curHeight = cur["height"]
-            while curHeight > 0:
-                next = parentNonces(cur["tipset"]["name"])
+            curRound = cur["round"]
+            while curRound > 0:
+                next = parentNonces(cur["directParent"]["name"])
                 for nonce in next:
                     chain.add(nonce)
                 cur = self.BlocksByNonce[next[0]]
-                curHeight = cur["height"]
+                curRound = cur["round"]
             chains += sorted(chain)
         return chains
         # TODO: potentially do something if there are multiple chains of same weight (unlikely)
@@ -90,10 +91,10 @@ class BlockTree:
     # round.
     def AvgHeadsPerRound(self):
         acc = 0.0
-        numTrials = len(self.BlocksByHeight)
+        numTrials = len(self.BlocksByRound)
         for round in range(0, numTrials):
-            if round in self.BlocksByHeight:
-                acc += len(self.BlocksByHeight[round])
+            if round in self.BlocksByRound:
+                acc += len(self.BlocksByRound[round])
                 
         return acc / float(numTrials) 
 
@@ -106,13 +107,13 @@ class BlockTree:
         # length of current head
         curHeadLen = 1
         # start with genesis
-        prevHead = self.headAtHeight(0)
-        curHeight = 0
-        print "curH: {curH}, chainH: {chainH}".format(curH=curHeight, chainH=len(self.BlocksByHeight))
+        prevHead = self.headAtRound(0)
+        curRound = 0
+        print "curR: {curR}, chainR: {chainR}".format(curR=curRound, chainR=len(self.BlocksByRound))
         # traverse chain
-        while curHeight < len(self.BlocksByHeight):
-            curHeight += 1
-            curHead = self.headAtHeight(curHeight)
+        while curRound < len(self.BlocksByRound):
+            curRound += 1
+            curHead = self.headAtRound(curRound)
             # This round the head is a null block
             if curHead == []:
                 curHeadLen += 1
@@ -121,9 +122,9 @@ class BlockTree:
             else:
                 # check if this head traverses back to the previous one through
                 # null blocks.  If not we have a reorg.
-                parentNonces = self.nonNullParentNonces(curHead)
+                _parentNonces = parentNonces(curHead[0]["tipset"]["name"])
                 prevNonces = [ block["nonce"] for block in prevHead]
-                if set(parentNonces) != set(prevNonces):
+                if set(_parentNonces) != set(prevNonces):
                     reorgs[findBucket(curHeadLen)] += 1
                     # reset curHeadLen
                     curHeadLen = 1
@@ -132,45 +133,30 @@ class BlockTree:
                 prevHead = curHead
         return reorgs
 
-    # Return the first non null parent nonces of input tipset child
-    def nonNullParentNonces(self, child):
-        childBlock = child[0] # all tipset blocks have the same parent so use one
-        while True:
-            nonces = parentNonces(childBlock["tipset"]["name"])
-            # can immediately return if len > 1 because can't build a TS out of multiple null blocks
-            if len(nonces) > 1:
-                return nonces
-            else:
-                childBlock = self.BlocksByNonce[nonces[0]]
-                # if null: then loop and go back one more
-                if not childBlock["null"]:
-                    return nonces
-                    
-
     # return list of blocks representing head tipset at a round if one exists.
-    def headAtHeight(self, h):
+    def headAtRound(self, r):
         blocks = []
-        if h not in self.BlocksByHeight:
+        if r not in self.BlocksByRound:
             return blocks
-        for block in self.BlocksByHeight[h]:
+        for block in self.BlocksByRound[r]:
             if block["inHead"]:
                 blocks.append(block)
 
         return blocks
 
 
-    # return blocks of heaviest tipset at height
-    def heaviestAtHeight(self, h):
-        if h not in self.BlocksByHeight:
-            raise "no BlocksByHeight entry at height "
+    # return blocks of heaviest tipset at round
+    def heaviestAtRound(self, r):
+        if r not in self.BlocksByRound:
+            raise "no BlocksByRound entry at round "
 
         # make all possible heaviest tipsets
         # tipsets repr with triple: (name, blockset, weightint)
         tipsets = []
-        for block in self.BlocksByHeight[h]:
+        for block in self.BlocksByRound[r]:
             placed = False
             for ts in tipsets:
-                if ts[0]["tipset"]["name"] == block["tipset"]["name"]:
+                if ts[0]["tipset"]["name"] == block["tipset"]["name"] and ts[0]["round"] == block["round"]:
                     ts.append(block)
                     placed = True
                     break
