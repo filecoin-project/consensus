@@ -90,7 +90,7 @@ def calculate_pr_catchup(nh, na, height, e, sim):
             # if the adversary has more than one block at this epoch,
             # do the attack (this is a bit weird bc we assume we are in the epoch boundary so the
             # adversary should have one block otherwise the epoch boundary stops)
-            if ca_before[j]>1:
+            if ca_before[j]>0:
             	# in its chain the adversary uses all of its block
                 adv_start = ca_before[j]
 
@@ -108,12 +108,21 @@ def calculate_pr_catchup(nh, na, height, e, sim):
                         if twochains:
                             h_start += 1 + ch_before[k]/2 #divide by two because we assume chain split in two for now
                         else:
-                            h_start += 1.67 #+ min(1,ch_before[k]) # assume two blocks at each height
+                            h_start += 1+ min(1,ch_before[k]) # assume two blocks at each height
                             # or one if honest don't have leaders
             if adv_start - h_start > adv:# start HS  where you have the more adv
                 adv = adv_start - h_start
+        ## try to start from "start"
+        # not completely sure about this method (precisely the removing zeros)
+        ca_before_notnull = [c for c in ca_before if c>0 ]
+        
+        ch_before_notnull = [1 + min(1,ch_before[k]) for k in range(len(ca_before_notnull))]
+        #ch_before_notnull = [1.67 for k in range(len(ca_before_notnull))]
 
-
+        adv_start = sum(ca_before_notnull) + 1
+        h_start = sum(ch_before_notnull)
+        if adv_start - h_start > adv:# start HS  where you have the more adv
+            adv = adv_start - h_start
         # wither use HS to gain an advantage or not and start
         if adv >0:
         	suma += adv # we add the advantage gained by HS to the adversarial weight
