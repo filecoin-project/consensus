@@ -4,8 +4,8 @@ from math import floor
 import multiprocessing as mp
 import scipy.special
 #Initialize parameters
-Num_of_sim_per_proc = 10000
-height = 20 #height of the attack
+Num_of_sim_per_proc = 100000
+height = 21 #height of the attack
 
 start_time = time.time()
 e = 5.
@@ -15,7 +15,7 @@ na = int(ntot*alpha)
 nh = ntot - na
 p=float(e)/float(1*ntot)
 unrealistic = 0 #do we want to compute the worst case?
-
+k = 10
 
 def count_possibilities(ca,num):
 	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
@@ -87,7 +87,9 @@ def simu(sim):
 		#a_max = sum(ca) #heaviest chain that adversary can create
 		#if unrealistic: h_unrealistic = sum([1.67 if ch[i]>0 else 0 for i in range(len(ch))])
 		#diff = a_max-h_sync
-		winners = count_possibilities_1(ca,h_sync)
+		newca = [ca[r] for r in range(0,height,k)]
+		restofca = [ca[r] for r in range(height) if r not in range(0,height,k)]
+		winners = count_possibilities_1(newca,h_sync-sum(restofca))
 		if winners > 0:
 			proba +=1 
 		wa.append(winners)
