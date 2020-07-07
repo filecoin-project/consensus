@@ -9,7 +9,7 @@ heights=range(100,101,50)
 e=1
 p=float(e)/float(1*ntot)
 
-sim=10000000
+sim=100000
 
 ec =[]
 praos = []

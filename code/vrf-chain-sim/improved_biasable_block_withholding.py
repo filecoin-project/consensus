@@ -14,34 +14,9 @@ ntot = 1000
 na = int(ntot*alpha)
 nh = ntot - na
 p=float(e)/float(1*ntot)
-unrealistic = 0 #do we want to compute the worst case?
 
 
-def count_possibilities(ca,num):
-	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
-	if num>sum(ca):
-		return 0
-	else:
-		s=sum(ca)
-		ca = [x for x in ca if x != 0]
-		n=len(ca)
-		l1 = [s-i for i in range(ca[-1]+1) if s-i>=num]
-		l = np.array(l1.copy())
-		for j in range(1,n):
-			for i in range(1,ca[-1-j]+1):
-				ll = np.array(l1)-i
-				ll = [x for x in ll if x>=num]
-				l=np.concatenate((l,ll),axis =0)
-			l1 = l.copy()
-		# dict_of_weight = {i: 0 for i in range(sum(ca)+1)}
-		# for elt in l:
-		# 	dict_of_weight[elt]+=1
-		# return dict_of_weight
-		#assert len(l) == np.prod(np.array(ca)+1)
-		ct = len(l)
-		# if ct>10:
-		# 	print(ca,num,l,len(l))
-		return ct
+
 
 def count_possibilities_1(ca,num):
 	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)

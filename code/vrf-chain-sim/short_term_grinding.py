@@ -13,13 +13,13 @@ p=e/float(1*ntot)
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 100000000
+Num_of_sim_per_proc = 10000
 
 start_time = time.time()
 
 
 
-
+k =
 def simu(sim):
 	win_ec = 0
 	#win_praos = 0
@@ -32,12 +32,19 @@ def simu(sim):
 		# put another way, it represents choice between longest honest and longest adv, and not between longest honests
 		#praosh=[1 if ch[i]>0 else 0 for i in range(len(ch))]
 		#praosa=[1 if ca[i]>0 else 0 for i in range(len(ca))]
-		w_a = ch[0]+sum(ca)#num,ber of blocks created by adversary + headstart
-		w_h = sum(ch)
+		if k
+		w_a = ch[0]-3+ca[0]+ca[1]#num,ber of blocks created by adversary + headstart
+		w_h = ch[0]+ch[1]
 		#wpraos_h = sum(praosh)
 		#wpraos_a = sum(praosa)
-
-		if w_a>=w_h: win_ec+=1
+		
+		for j in range(2,height):
+			if w_a>=w_h: 
+				win_ec+=1
+				break
+			else:
+				w_a += ca[j]
+				w_h += ch[j]
 		#if wpraos_a>=wpraos_h: win_praos+=1
 	#print win_ec, win_praos
 	return float(win_ec)/float(sim)
