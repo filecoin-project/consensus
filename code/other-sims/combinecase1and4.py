@@ -6,7 +6,7 @@ from operator import add
 from scipy.stats import binom as bi
 import math
 
-## TO DO I feel we should also to the headstart (i.e. case 4) in the same attack
+## TO DO I feel we should also do the headstart (i.e. case 4) in the same attack
 
 
 

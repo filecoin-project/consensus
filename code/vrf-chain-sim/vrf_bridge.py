@@ -14,7 +14,7 @@ ntot = 1000
 na = int(ntot*alpha)
 nh = ntot - na
 p=float(e)/float(1*ntot)
-unrealistic = 0 #do we want to compute the worst case?
+honestsplit = 1 #do we want to compute the worst case?
 k = 10
 
 def count_possibilities(ca,num):
@@ -22,7 +22,9 @@ def count_possibilities(ca,num):
 	if num>sum(ca):
 		return 0
 	else:
+		print(num)
 		s=sum(ca)
+		print(s)
 		ca = [x for x in ca if x != 0]
 		n=len(ca)
 		l1 = [s-i for i in range(ca[-1]+1) if s-i>=num]
@@ -45,10 +47,11 @@ def count_possibilities(ca,num):
 
 def count_possibilities_1(ca,num):
 	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
-	if num>sum(ca):
+	s=sum(ca)
+	if num>s:
 		return 0
-	else:
-		s=sum(ca)
+	if num<=s and s>0:
+		#print(num,ca)
 		ca = [x for x in ca if x != 0]
 		n=len(ca)
 		l1 = [s-i for i in range(ca[-1]+1) if s-i>num]
@@ -68,6 +71,8 @@ def count_possibilities_1(ca,num):
 		# if ct>10:
 		# 	print(ca,num,l,len(l))
 		return ct
+	else:
+		return 0
 
 
 def simu(sim): 
@@ -83,9 +88,12 @@ def simu(sim):
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height) #[2,3,3,2]
 		ca = np.random.binomial(na, p, height) 
-		h_sync = sum(ch)
+		
 		#a_max = sum(ca) #heaviest chain that adversary can create
-		#if unrealistic: h_unrealistic = sum([1.67 if ch[i]>0 else 0 for i in range(len(ch))])
+		if honestsplit: 
+			h_sync = sum([1.67 if ch[i]>0 else 0 for i in range(len(ch))])
+		else:
+			h_sync = sum(ch)
 		#diff = a_max-h_sync
 		newca = [ca[r] for r in range(0,height,k)]
 		restofca = [ca[r] for r in range(height) if r not in range(0,height,k)]

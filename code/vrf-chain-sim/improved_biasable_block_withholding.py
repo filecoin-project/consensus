@@ -14,7 +14,7 @@ ntot = 1000
 na = int(ntot*alpha)
 nh = ntot - na
 p=float(e)/float(1*ntot)
-
+honestsplit  = 1
 
 
 
@@ -58,9 +58,12 @@ def simu(sim):
 	for i in range(sim):
 		ch = np.random.binomial(nh, p, height) #[2,3,3,2]
 		ca = np.random.binomial(na, p, height) 
-		h_sync = sum(ch)
+		
 		#a_max = sum(ca) #heaviest chain that adversary can create
-		#if unrealistic: h_unrealistic = sum([1.67 if ch[i]>0 else 0 for i in range(len(ch))])
+		if honestsplit: 
+			h_sync = sum([1.67 if ch[i]>0 else 0 for i in range(len(ch))])
+		else:
+			h_sync = sum(ch)
 		#diff = a_max-h_sync
 		winners = count_possibilities_1(ca,h_sync)
 		if winners > 0:
