@@ -52,6 +52,7 @@ def print_weight(vec):#given a vector of number of election won at each slot, ho
 def count(ca):
 	#create first list with (s=sum(ca_i), s-1, s-2, ..., s-ca_n)
 	s=sum(ca)
+	print(ca)
 	ca = [x for x in ca if x != 0]
 	n=len(ca)
 	l1 = [s-i for i in range(ca[-1]+1)]
