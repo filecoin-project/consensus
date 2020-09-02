@@ -12,9 +12,9 @@ na=33
 ntot=na+nh
 e=5
 print "e = ", e
-Num_of_sim_per_proc = 1000000000
+Num_of_sim_per_proc = 10000
 p=float(e)/float(ntot)
-min_length=10
+min_length=0
 
 
 

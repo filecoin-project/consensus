@@ -5,15 +5,16 @@ import time
 nh=66667
 na=33333
 ntot=na+nh
-height=60
-e=5.
+height=50
+e=4.
 p=e/float(1*ntot)
-
+print "height = ", height
 
 ec =[]
 praos = []
 print "e = ", e
 Num_of_sim_per_proc = 1000000
+print "Num of sim per proc = ", Num_of_sim_per_proc
 
 start_time = time.time()
 

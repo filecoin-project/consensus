@@ -5,6 +5,7 @@ import multiprocessing as mp
 from operator import add
 from scipy.stats import binom as bi
 import math
+from forked_ch import forked_ch
 
 ## TO DO I feel we should also do the headstart (i.e. case 4) in the same attack
 
@@ -47,6 +48,8 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         # ca - list of number of honest leaders per slot
         ca = np.random.binomial(na, p, height)
 
+        ch = forked_ch(ch,ca,height)
+
         # forks_in_that_sim - list of fork in that simulation
         forks_in_that_sim = []
 
@@ -71,6 +74,12 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         # ca_before - list of number of adversarial leaders per slot before attack starts
         ca_before = np.random.binomial(na, p, epochboundarylength)
 
+        ch_before = forked_ch(ch_before,ca_before,epochboundarylength)[1:]
+        # we remove the first term because in the forked_ch method it corresponds
+        # to the begining of the attack (i.e. all honest mine on the same chain)
+        # but in that case we consider the honest chain before the fork so when the epoch boundary has already started)
+        ca_before = ca_before[1:] # to hava the same length has ch_before
+
         # the slot 0 for ca_before and ch_before corresponds to the case before the
         # catch up starts, so by definition a slot where the adversary is not elected leader
         # (as the catch up starts after the epoch boundary has finished)
@@ -79,7 +88,7 @@ def calculate_pr_catchup(nh, na, height, e, sim):
         # adv - captures the advantage of the adversary when starting it's catchup before slot zero
         adv = 0 
 
-        for j in range(1,epochboundarylength):
+        for j in range(1,epochboundarylength-1):
             #we can only do the headstart if there was more than one block
             #created by the adversary at that height
             # adv_start - advantage in adverssrial chain
@@ -105,11 +114,8 @@ def calculate_pr_catchup(nh, na, height, e, sim):
                 for k in range(1,j):
                     if ca_before[k]>0:
                         adv_start+=ca_before[k]
-                        if twochains:
-                            h_start += 1 + ch_before[k]/2 #divide by two because we assume chain split in two for now
-                        else:
-                            h_start += 1+ min(1,ch_before[k]) # assume two blocks at each height
-                            # or one if honest don't have leaders
+                        h_start += ch_before[k]
+                       
             if adv_start - h_start > adv:# start HS  where you have the more adv
                 adv = adv_start - h_start
         ## try to start from "start"
@@ -169,6 +175,7 @@ def calculate_max_total_catchup(sim, num_cycles, forks):
 
     for fork in forks:
         for min_length in range(1,height):
+        #for min_length in [0,1]:
             if fork:
                 if fork[-1]>= min_length: #check if there exists a fork of length at least min_length
                 #take the first value greater or equal than min_length
@@ -195,6 +202,9 @@ def calculate_max_total_catchup(sim, num_cycles, forks):
 
 def MaxTotalBeforeNull(sim,num_cycles ,nullProb = .188): # 0.18 is the proba of having one slot null
     maxtotBN= []
+    if e==4:
+    	nullProb = 0.2636
+    if e!=5 and e!=4: print("Wrong null probability")
     for targetNulls in num_cycles:
     # This is a simple CDF of a binomial (sum of binom probas up to x).
     # each round has a proba p = advNullRound() of being null for the adversary
@@ -213,7 +223,7 @@ if __name__ == '__main__':
     na = 33
     height = 50
     e = 5
-    sim = 100
+    sim = 1000
     #min_length = 10
     s = 2**-30
 
