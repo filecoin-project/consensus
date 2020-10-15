@@ -223,7 +223,7 @@ if __name__ == '__main__':
     na = 33
     height = 50
     e = 5
-    sim = 1000
+    sim = 100000
     #min_length = 10
     s = 2**-30
 

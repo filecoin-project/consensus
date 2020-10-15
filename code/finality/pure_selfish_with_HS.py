@@ -2,10 +2,10 @@ import multiprocessing as mp
 import numpy as np 
 import time
 
-nh=66667
-na=33333
+nh=80
+na=20
 ntot=na+nh
-height=50
+height=25
 e=4.
 p=e/float(1*ntot)
 print "height = ", height
@@ -13,7 +13,7 @@ print "height = ", height
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 1000000
+Num_of_sim_per_proc = 10000000
 print "Num of sim per proc = ", Num_of_sim_per_proc
 
 start_time = time.time()

@@ -5,7 +5,7 @@ import time
 nh=668
 na=332
 ntot=na+nh
-height=300
+height=400
 e=5.
 p=e/float(1*ntot)
 print "height = ", height
@@ -13,7 +13,7 @@ print "height = ", height
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 1000000
+Num_of_sim_per_proc = 10000000
 print "Num of sim per proc = ", Num_of_sim_per_proc
 
 start_time = time.time()
