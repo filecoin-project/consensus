@@ -5,15 +5,23 @@ import time
 nh=668
 na=332
 ntot=na+nh
-height=400
+height=30
 e=5.
 p=e/float(1*ntot)
 print "height = ", height
 
+''' This script calculates the probability that the adversary can suceed in
+creating a selfish chain of length exactly height using strong selfish mining
+attack.
+Note: the adversary could potentially succeed in creating a private chain of length
+>height but fail in creating a chain of length height (for example if they get
+really lucky at the next epoch after height).
+This is why we also have the script strongSM_greaterorequal.py
+'''
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 10000000
+Num_of_sim_per_proc = 100000
 print "Num of sim per proc = ", Num_of_sim_per_proc
 
 start_time = time.time()
@@ -41,7 +49,14 @@ def simu(sim):
 			# ca[i] adversarial block
 			# ch[i] honest block
 			# proba min ticket: pi= ca[i]/(ca[i]+ch[i])
-			# toss a biased coin with proba 
+			# toss a biased coin with proba pi
+
+			## In the following code, we build the honest chain by
+			# splitting its power over at leat two chains
+			# in the best adversarial conditions, only one block
+			# is added to the honest chain. Otherwise 2 blocks or
+			# all of the honest block if the adversary was not able to maintain
+			# the split for too long
 			if ca[i]>0 and fork_finished == 0 :
 				## to do: what happened when ch[i] == 0?
 				pi = float(ca[i])/float(ca[i]+ch[i])

@@ -5,16 +5,16 @@ import time
 nh=668
 na=332
 ntot=na+nh
-height_min=80
-height_max=200
-e=5.
+height_min=30
+height_max=100
+e=4.
 p=e/float(1*ntot)
 print "height min = ", height_min
 
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 10000
+Num_of_sim_per_proc = 100000
 
 start_time = time.time()
 
