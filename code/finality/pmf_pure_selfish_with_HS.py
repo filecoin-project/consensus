@@ -22,7 +22,7 @@ na = int(ntot*alpha)
 p = float(e)/float(ntot)
 w = na
 nh = ntot - na
-height = 30
+height = 10
 print "height = ", height
 
 def Poi(w,k,p):

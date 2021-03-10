@@ -10,20 +10,23 @@ than height_min
 nh=668
 na=332
 ntot=na+nh
-height_max=600
+height_max=10
 e=1.
 p=e/float(1*ntot)
 advfrac = 1./3.
+alpha = 0.33332
+# advfrac = (np.exp(alpha-1)-np.exp(-1))/(1-p0)
 
 ec =[]
 praos = []
 print "e = ", e
-Num_of_sim_per_proc = 100
+Num_of_sim_per_proc = 1000000
 print "Num of sim per proc = ", Num_of_sim_per_proc
 
 start_time = time.time()
 
-height_min_range = [150,200,300,400]
+#height_min_range = [150,200,300,400]
+height_min_range = [10]#,60,80]
 
 for height_min in height_min_range:
 	print "height = ", height_min
