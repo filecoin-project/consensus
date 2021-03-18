@@ -17,10 +17,6 @@ def SSLE(l,alpha):
 
 def SSLE_pa(l,alpha):
 	p0 = (1-np.exp(-alpha)-np.exp(alpha-1)+2*np.exp(-1))
-	#pa = (np.exp(alpha-1)-np.exp(-1))/(np.exp(alpha-1)+np.exp(-alpha)-2*np.exp(-1))
-	#pa = 1-np.exp(-alpha)
-	#pa=(1-np.exp(-alpha))/(2-np.exp(-alpha)-np.exp(alpha-1))
-	#ph = 1-np.exp(alpha-1)
 	pa = (np.exp(alpha-1)-np.exp(-1))/(1-p0)
 	return sum([Bin(i,l,pa) for i in range(int(ceil(l/2)),l+1)])
 	#return [Bin(i,l,pa) for i in range(int(ceil(l/2)),l+1)]
